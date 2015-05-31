@@ -12,8 +12,6 @@ AM_CFLAGS = \
 finvenkisto_SOURCES = \
 	fv-array-object.c \
 	fv-array-object.h \
-	fv-buffer.c \
-	fv-buffer.h \
 	fv-data.c \
 	fv-data.h \
 	fv-ease.c \

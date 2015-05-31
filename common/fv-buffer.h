@@ -1,6 +1,7 @@
 /*
  * Finvenkisto
- * Copyright (C) 2013  Neil Roberts
+ *
+ * Copyright (C) 2013, 2014 Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -42,30 +43,30 @@ fv_buffer_init(struct fv_buffer *buffer);
 
 void
 fv_buffer_ensure_size(struct fv_buffer *buffer,
-                       size_t size);
+                      size_t size);
 
 void
 fv_buffer_set_length(struct fv_buffer *buffer,
-                      size_t length);
+                     size_t length);
 
 FV_PRINTF_FORMAT(2, 3) void
 fv_buffer_append_printf(struct fv_buffer *buffer,
-                         const char *format,
-                         ...);
+                        const char *format,
+                        ...);
 
 void
 fv_buffer_append_vprintf(struct fv_buffer *buffer,
-                          const char *format,
-                          va_list ap);
+                         const char *format,
+                         va_list ap);
 
 void
 fv_buffer_append(struct fv_buffer *buffer,
-                  const void *data,
-                  size_t length);
+                 const void *data,
+                 size_t length);
 
 static inline void
 fv_buffer_append_c(struct fv_buffer *buffer,
-                    char c)
+                   char c)
 {
         if (buffer->size > buffer->length)
                 buffer->data[buffer->length++] = c;
@@ -75,7 +76,7 @@ fv_buffer_append_c(struct fv_buffer *buffer,
 
 void
 fv_buffer_append_string(struct fv_buffer *buffer,
-                         const char *str);
+                        const char *str);
 
 void
 fv_buffer_destroy(struct fv_buffer *buffer);
