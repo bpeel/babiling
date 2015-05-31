@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,37 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_FILE_ERROR_H
+#define FV_FILE_ERROR_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "fv-error.h"
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+extern struct fv_error_domain
+fv_file_error;
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+enum fv_file_error {
+  FV_FILE_ERROR_EXIST,
+  FV_FILE_ERROR_ISDIR,
+  FV_FILE_ERROR_ACCES,
+  FV_FILE_ERROR_NAMETOOLONG,
+  FV_FILE_ERROR_NOENT,
+  FV_FILE_ERROR_NOTDIR,
+  FV_FILE_ERROR_AGAIN,
+  FV_FILE_ERROR_INTR,
+  FV_FILE_ERROR_PERM,
+  FV_FILE_ERROR_PFNOSUPPORT,
+  FV_FILE_ERROR_AFNOSUPPORT,
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+  FV_FILE_ERROR_OTHER
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+enum fv_file_error
+fv_file_error_from_errno(int errnum);
+
+FV_PRINTF_FORMAT(3, 4) void
+fv_file_error_set(struct fv_error **error,
+                   int errnum,
+                   const char *format,
+                   ...);
+
+#endif /* FV_FILE_ERROR_H */

@@ -21,33 +21,28 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_IPC_PROTO_H
+#define FV_IPC_PROTO_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "fv-buffer.h"
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+enum fv_ipc_proto_status {
+        FV_IPC_PROTO_STATUS_SUCCESS = 0,
+        FV_IPC_PROTO_STATUS_GENERIC_ERROR,
+        FV_IPC_PROTO_STATUS_INVALID_COMMAND,
+        FV_IPC_PROTO_STATUS_FD_ERROR,
+        FV_IPC_PROTO_STATUS_INVALID_EMAIL,
+        FV_IPC_PROTO_STATUS_UNKNOWN_FROM_ADDRESS,
+        FV_IPC_PROTO_STATUS_UNSUPPORTED
+};
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+void
+fv_ipc_proto_begin_command(struct fv_buffer *buffer,
+                            const char *name,
+                            uint32_t request_id);
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+void
+fv_ipc_proto_end_command(struct fv_buffer *buffer,
+                          size_t command_start);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+#endif /* FV_IPC_PROTO_H */

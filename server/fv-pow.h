@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013, 2014  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,52 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_POW_H
+#define FV_POW_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-error.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+struct fv_pow;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+struct fv_pow_cookie;
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+typedef void (* fv_pow_calculate_func)(uint64_t nonce,
+                                        void *user_data);
+
+struct fv_pow *
+fv_pow_new(void);
+
+struct fv_pow_cookie *
+fv_pow_calculate(struct fv_pow *pow,
+                  const uint8_t *payload,
+                  size_t length,
+                  int pow_per_byte,
+                  int pow_extra_bytes,
+                  fv_pow_calculate_func func,
+                  void *user_data);
+
+void
+fv_pow_cancel(struct fv_pow_cookie *cookie);
+
+void
+fv_pow_free(struct fv_pow *pow);
+
+uint64_t
+fv_pow_calculate_target(size_t length,
+                         int payload_extra_bytes,
+                         int average_trials_per_byte);
+
+uint64_t
+fv_pow_calculate_value(const uint8_t *payload,
+                        size_t length);
+
+bool
+fv_pow_check(const uint8_t *payload,
+              size_t length,
+              int pow_per_byte,
+              int pow_extra_bytes);
+
+#endif /* FV_POW_H */

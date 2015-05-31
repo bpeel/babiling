@@ -21,33 +21,32 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_PARSE_ADDRESSES_H
+#define FV_PARSE_ADDRESSES_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-error.h"
+#include "fv-buffer.h"
+#include "fv-address.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+extern struct fv_error_domain
+fv_parse_addresses_error;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+enum fv_parse_addresses_error {
+        FV_PARSE_ADDRESSES_ERROR_INVALID
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+typedef bool
+(* fv_parse_addresses_cb)(const struct fv_address *address,
+                           void *user_data,
+                           struct fv_error **error);
+
+bool
+fv_parse_addresses(struct fv_buffer *buffer,
+                    fv_parse_addresses_cb cb,
+                    void *user_data,
+                    struct fv_error **error);
+
+#endif /* FV_PARSE_ADDRESSES_H */

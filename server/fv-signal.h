@@ -1,6 +1,6 @@
 /*
- * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright © 2008 Kristian Høgsberg
+ * Copyright © 2013 Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,52 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+/* This file was originally borrowed from the Wayland source code */
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#ifndef FV_SIGNAL_H
+#define FV_SIGNAL_H
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include <stdbool.h>
 
-int
-main(int argc, char **argv)
+#include "fv-list.h"
+
+struct fv_listener;
+
+typedef bool
+(* fv_notify_func)(struct fv_listener *listener, void *data);
+
+struct fv_signal {
+        struct fv_list listener_list;
+};
+
+struct fv_listener {
+        struct fv_list link;
+        fv_notify_func notify;
+};
+
+static inline void
+fv_signal_init(struct fv_signal *signal)
 {
-        const char *bn;
-
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
-
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
+        fv_list_init(&signal->listener_list);
 }
+
+static inline void
+fv_signal_add(struct fv_signal *signal,
+               struct fv_listener *listener)
+{
+        fv_list_insert(signal->listener_list.prev, &listener->link);
+}
+
+static inline bool
+fv_signal_emit(struct fv_signal *signal, void *data)
+{
+        struct fv_listener *l, *next;
+
+        fv_list_for_each_safe(l, next, &signal->listener_list, link)
+                if (!l->notify(l, data))
+                        return false;
+
+        return true;
+}
+
+#endif /* FV_SIGNAL_H */

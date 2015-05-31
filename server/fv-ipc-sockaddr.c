@@ -23,31 +23,49 @@
 
 #include "config.h"
 
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <stddef.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-ipc-sockaddr.h"
+#include "fv-util.h"
+#include "fv-buffer.h"
 
-int
-main(int argc, char **argv)
+void
+fv_ipc_sockaddr_create(struct sockaddr **sockaddr_out,
+                        socklen_t *sockaddr_len_out)
 {
-        const char *bn;
+        const char *runtime_dir;
+        struct fv_buffer buffer;
+        struct sockaddr_un *sockaddr;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+        fv_buffer_init(&buffer);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
+        fv_buffer_set_length(&buffer, offsetof(struct sockaddr_un, sun_path));
+
+        runtime_dir = getenv("XDG_RUNTIME_DIR");
+
+        if (runtime_dir) {
+                fv_buffer_append_string(&buffer, runtime_dir);
+
+                while (buffer.length > offsetof(struct sockaddr_un, sun_path) &&
+                       buffer.data[buffer.length - 1] == '/')
+                        buffer.length--;
+
+                fv_buffer_append_string(&buffer, "/notbit/notbit-ipc");
         } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
+                fv_buffer_append_printf(&buffer,
+                                         "/tmp/notbit-%i/notbit-ipc",
+                                         (int) getuid());
         }
+
+        sockaddr = (struct sockaddr_un *) buffer.data;
+
+        sockaddr->sun_family = AF_LOCAL;
+
+        *sockaddr_out = (struct sockaddr *) sockaddr;
+        *sockaddr_len_out = buffer.length;
 }

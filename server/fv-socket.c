@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -23,31 +23,28 @@
 
 #include "config.h"
 
+#include <fcntl.h>
+#include <errno.h>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-socket.h"
+#include "fv-file-error.h"
 
-int
-main(int argc, char **argv)
+bool
+fv_socket_set_nonblock(int sock,
+                        struct fv_error **error)
 {
-        const char *bn;
+        int flags;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+        flags = fcntl(sock, F_GETFL, 0);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
+        if (flags == -1 || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+                fv_file_error_set(error,
+                                   errno,
+                                   "Error setting non-blocking mode: %s",
+                                   strerror(errno));
+                return false;
         }
+
+        return true;
 }

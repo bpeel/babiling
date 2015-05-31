@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013, 2014  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,39 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_KEY_VALUE_H
+#define FV_KEY_VALUE_H
 
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-key.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+enum fv_key_value_event {
+        FV_KEY_VALUE_EVENT_HEADER,
+        FV_KEY_VALUE_EVENT_PROPERTY
+};
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+typedef void
+(* fv_key_value_func)(enum fv_key_value_event event,
+                       int line_number,
+                       const char *key,
+                       const char *value,
+                       void *user_data);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+void
+fv_key_value_load(FILE *file,
+                   fv_key_value_func func,
+                   void *user_data);
+
+bool
+fv_key_value_parse_bool_value(int line_number,
+                               const char *value,
+                               bool *result);
+
+bool
+fv_key_value_parse_int_value(int line_number,
+                              const char *value_string,
+                              int64_t max,
+                              int64_t *result);
+
+#endif /* FV_KEY_VALUE_H */

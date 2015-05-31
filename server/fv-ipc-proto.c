@@ -24,30 +24,39 @@
 #include "config.h"
 
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-ipc-proto.h"
+#include "fv-buffer.h"
 
-int
-main(int argc, char **argv)
+void
+fv_ipc_proto_begin_command(struct fv_buffer *buffer,
+                            const char *name,
+                            uint32_t request_id)
 {
-        const char *bn;
+        int name_length = strlen(name);
+        int i;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+        fv_buffer_append(buffer, name, name_length);
+        for (i = name_length; i < 12; i++)
+                fv_buffer_append_c(buffer, '\0');
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
+        request_id = FV_UINT32_TO_BE(request_id);
+        fv_buffer_append(buffer, &request_id, sizeof request_id);
+
+        /* Reserve space for the length */
+        fv_buffer_set_length(buffer, buffer->length + 4);
+}
+
+void
+fv_ipc_proto_end_command(struct fv_buffer *buffer,
+                          size_t command_start)
+{
+        uint32_t command_length;
+
+        command_length = buffer->length - command_start - 20;
+        command_length = FV_UINT32_TO_BE(command_length);
+
+        memcpy(buffer->data + command_start + 16,
+               &command_length,
+               sizeof command_length);
 }

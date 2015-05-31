@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,49 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_BLOB_H
+#define FV_BLOB_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
+#include <stddef.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-proto.h"
+#include "fv-ref-count.h"
+#include "fv-buffer.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+/* A blob represents a ref-counted immutable chunk of data. This will
+ * be used to hold all inventory objects from the network such as
+ * messages and public keys. The ref-count is thread-safe so that the
+ * blob can be passed off to the store thread to be written to
+ * disk. */
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+struct fv_blob {
+        enum fv_proto_inv_type type;
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+        struct fv_ref_count ref_count;
+
+        size_t size;
+
+        /* Over-allocated to contain the data */
+        uint8_t data[1];
+};
+
+void
+fv_blob_dynamic_init(struct fv_buffer *buffer,
+                      enum fv_proto_inv_type type);
+
+struct fv_blob *
+fv_blob_dynamic_end(struct fv_buffer *buffer);
+
+struct fv_blob *
+fv_blob_new(enum fv_proto_inv_type type,
+             const void *data,
+             size_t size);
+
+struct fv_blob *
+fv_blob_ref(struct fv_blob *blob);
+
+void
+fv_blob_unref(struct fv_blob *blob);
+
+#endif /* FV_BLOB_H */

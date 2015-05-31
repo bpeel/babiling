@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,23 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_BASE58_H
+#define FV_BASE58_H
 
-#include <string.h>
-#include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-util.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+size_t
+fv_base58_encode(const uint8_t *input,
+                  size_t length,
+                  char *output);
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+ssize_t
+fv_base58_decode(const char *input,
+                  size_t input_length,
+                  uint8_t *output,
+                  size_t output_length);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+#endif /* FV_BASE58_H */

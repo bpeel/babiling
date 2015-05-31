@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,22 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_LOAD_KEYS_H
+#define FV_LOAD_KEYS_H
 
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-key.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+/* This is a helper function for fv_store. It's in its own file just
+ * because it's a bit big */
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+typedef void (* fv_load_keys_func)(struct fv_key *key,
+                                    void *user_data);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+void
+fv_load_keys(FILE *file,
+              fv_load_keys_func func,
+              void *user_data);
+
+#endif /* FV_LOAD_KEYS_H */

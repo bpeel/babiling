@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,32 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_SLAB_H
+#define FV_SLAB_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stddef.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+struct fv_slab;
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+#define FV_SLAB_SIZE 2048
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+struct fv_slab_allocator {
+        struct fv_slab *slabs;
+        size_t slab_used;
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+#define FV_SLAB_STATIC_INIT \
+        { .slabs = NULL, .slab_used = FV_SLAB_SIZE }
+
+void
+fv_slab_init(struct fv_slab_allocator *allocator);
+
+void *
+fv_slab_allocate(struct fv_slab_allocator *allocator,
+                  size_t size,
+                  int alignment);
+
+void
+fv_slab_destroy(struct fv_slab_allocator *allocator);
+
+#endif /* FV_SLAB_H */

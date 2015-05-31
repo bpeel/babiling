@@ -21,33 +21,45 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_PROXY_H
+#define FV_PROXY_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "fv-error.h"
+#include "fv-netaddress.h"
+#include "fv-buffer.h"
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+struct fv_proxy;
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+extern struct fv_error_domain
+fv_proxy_error;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+enum fv_proxy_error {
+        FV_PROXY_ERROR_BAD_PROTOCOL,
+        FV_PROXY_ERROR_NO_AUTHENTICATION_UNSUPPORTED,
+        FV_PROXY_ERROR_GENERAL_SOCKS_SERVER_FAILURE,
+        FV_PROXY_ERROR_CONNECTION_NOT_ALLOWED_BY_RULESET,
+        FV_PROXY_ERROR_NETWORK_UNREACHABLE,
+        FV_PROXY_ERROR_HOST_UNREACHABLE,
+        FV_PROXY_ERROR_CONNECTION_REFUSED,
+        FV_PROXY_ERROR_TTL_EXPIRED,
+        FV_PROXY_ERROR_COMMAND_NOT_SUPPORTED,
+        FV_PROXY_ERROR_ADDRESS_TYPE_NOT_SUPPORTED,
+        FV_PROXY_ERROR_UNKNOWN
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+struct fv_proxy *
+fv_proxy_new(const struct fv_netaddress *dst_addr,
+              struct fv_buffer *in_buf,
+              struct fv_buffer *out_buf);
+
+bool
+fv_proxy_process_commands(struct fv_proxy *proxy,
+                           struct fv_error **error);
+
+bool
+fv_proxy_is_connected(struct fv_proxy *proxy);
+
+void
+fv_proxy_free(struct fv_proxy *proxy);
+
+#endif /* FV_PROXY_H */

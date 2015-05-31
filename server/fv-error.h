@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,47 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_ERROR_H
+#define FV_ERROR_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdarg.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-util.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+/* Exception handling mechanism inspired by glib's GError */
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+struct fv_error_domain {
+        int stub;
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+struct fv_error {
+        struct fv_error_domain *domain;
+        int code;
+        char message[1];
+};
+
+void
+fv_set_error_va_list(struct fv_error **error_out,
+                      struct fv_error_domain *domain,
+                      int code,
+                      const char *format,
+                      va_list ap);
+
+FV_PRINTF_FORMAT(4, 5) void
+fv_set_error(struct fv_error **error,
+              struct fv_error_domain *domain,
+              int code,
+              const char *format,
+              ...);
+
+void
+fv_error_free(struct fv_error *error);
+
+void
+fv_error_clear(struct fv_error **error);
+
+void
+fv_error_propagate(struct fv_error **error,
+                    struct fv_error *other);
+
+#endif /* FV_ERROR_H */

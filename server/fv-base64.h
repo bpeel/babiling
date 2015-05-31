@@ -21,33 +21,48 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_BASE64_H
+#define FV_BASE64_H
 
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-error.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+extern struct fv_error_domain
+fv_base64_error;
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+enum fv_base64_error {
+        FV_BASE64_ERROR_INVALID_PADDING
+};
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+struct fv_base64_data {
+        int n_padding;
+        int n_chars;
+        int value;
+};
+
+#define FV_BASE64_MAX_INPUT_FOR_SIZE(input_size) \
+        ((size_t) (input_size) * 4 / 3)
+
+void
+fv_base64_decode_start(struct fv_base64_data *data);
+
+ssize_t
+fv_base64_decode(struct fv_base64_data *data,
+                  const uint8_t *in_buffer,
+                  size_t length,
+                  uint8_t *out_buffer,
+                  struct fv_error **error);
+
+ssize_t
+fv_base64_decode_end(struct fv_base64_data *data,
+                      uint8_t *buffer,
+                      struct fv_error **error);
+
+size_t
+fv_base64_encode(const uint8_t *data_in,
+                  size_t data_in_length,
+                  char *data_out);
+
+#endif /* FV_BASE64_H */

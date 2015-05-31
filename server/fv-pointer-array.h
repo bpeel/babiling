@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,27 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_POINTER_ARRAY_H
+#define FV_POINTER_ARRAY_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-buffer.h"
 
-int
-main(int argc, char **argv)
+static inline void
+fv_pointer_array_append(struct fv_buffer *buf,
+                         void *pointer)
 {
-        const char *bn;
-
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
-
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
+        fv_buffer_append(buf, &pointer, sizeof (pointer));
 }
+
+#define fv_pointer_array_length(buf)           \
+        ((buf)->length / sizeof (void *))
+
+#define fv_pointer_array_get(buf, index)       \
+        ((((void **) (buf)->data))[index])
+
+#define fv_pointer_array_set(buf, index, pointer)      \
+        ((((void **) (buf)->data))[index] = (pointer))
+
+#endif /* FV_POINTER_ARRAY_H */

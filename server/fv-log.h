@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2011, 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -21,33 +21,29 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef __NTB_LOG_H__
+#define __NTB_LOG_H__
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdbool.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-util.h"
+#include "fv-log.h"
+#include "fv-error.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+bool
+fv_log_available(void);
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+FV_PRINTF_FORMAT(1, 2) void
+fv_log(const char *format, ...);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+bool
+fv_log_set_file(const char *filename,
+                 struct fv_error **error);
+
+void
+fv_log_start(void);
+
+void
+fv_log_close(void);
+
+#endif /* __NTB_LOG_H__ */

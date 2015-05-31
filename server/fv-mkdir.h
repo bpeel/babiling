@@ -21,33 +21,20 @@
  * OF THIS SOFTWARE.
  */
 
-#include "config.h"
+#ifndef FV_MKDIR_H
+#define FV_MKDIR_H
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdbool.h>
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
+#include "fv-error.h"
+#include "fv-buffer.h"
 
-int
-main(int argc, char **argv)
-{
-        const char *bn;
+bool
+fv_mkdir(const char *name,
+          struct fv_error **error);
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+bool
+fv_mkdir_hierarchy(struct fv_buffer *buf,
+                    struct fv_error **error);
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
-        } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
-        }
-}
+#endif /* FV_MKDIR_H */

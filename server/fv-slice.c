@@ -1,6 +1,6 @@
 /*
  * Notbit - A Bitmessage client
- * Copyright (C) 2014  Neil Roberts
+ * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -23,31 +23,48 @@
 
 #include "config.h"
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "fv-slice.h"
 
-#include "fv-daemon.h"
-#include "fv-sendmail.h"
-#include "fv-keygen.h"
-
-int
-main(int argc, char **argv)
+void
+fv_slice_allocator_init(struct fv_slice_allocator *allocator,
+                         size_t size,
+                         size_t alignment)
 {
-        const char *bn;
+        allocator->element_size = MAX(size, sizeof (struct fv_slice));
+        allocator->element_alignment = alignment;
+        allocator->magazine = NULL;
+        fv_slab_init(&allocator->slab);
+}
 
-        for (bn = argv[0] + strlen(argv[0]);
-             bn > argv[0] && bn[-1] != '/';
-             bn--);
+void
+fv_slice_allocator_destroy(struct fv_slice_allocator *allocator)
+{
+        fv_slab_destroy(&allocator->slab);
+}
 
-        if (!strcmp(bn, "notbit-sendmail")) {
-                return fv_sendmail(argc, argv);
-        } else if (!strcmp(bn, "notbit-keygen")) {
-                return fv_keygen(argc, argv);
-        } else if (!strcmp(bn, "finvenkisto-server")) {
-                return fv_daemon(argc, argv);
+void *
+fv_slice_alloc(struct fv_slice_allocator *allocator)
+{
+        void *ret;
+
+        if (allocator->magazine) {
+                ret = allocator->magazine;
+                allocator->magazine = allocator->magazine->next;
         } else {
-                fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);
-                return EXIT_FAILURE;
+                ret = fv_slab_allocate(&allocator->slab,
+                                        allocator->element_size,
+                                        allocator->element_alignment);
         }
+
+        return ret;
+}
+
+void
+fv_slice_free(struct fv_slice_allocator *allocator,
+               void *ptr)
+{
+        struct fv_slice *slice = ptr;
+
+        slice->next = allocator->magazine;
+        allocator->magazine = slice;
 }
