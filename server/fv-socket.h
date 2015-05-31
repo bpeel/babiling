@@ -1,5 +1,5 @@
 /*
- * Notbit - A Bitmessage client
+ * Finvenkisto
  * Copyright (C) 2013  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
