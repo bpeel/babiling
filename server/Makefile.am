@@ -25,7 +25,6 @@ finvenkisto_server_SOURCES = \
 	fv-netaddress.h \
 	fv-network.c \
 	fv-network.h \
-	fv-proto.h \
 	fv-signal.h \
 	fv-slab.c \
 	fv-slab.h \

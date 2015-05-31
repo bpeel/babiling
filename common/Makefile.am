@@ -3,6 +3,7 @@ noinst_LIBRARIES = libcommon.a
 libcommon_a_SOURCES = \
 	fv-buffer.c \
 	fv-buffer.h \
+	fv-proto.h \
 	fv-util.c \
 	fv-util.h \
 	$(NULL)
