@@ -44,7 +44,7 @@ main(int argc, char **argv)
                 return ntb_sendmail(argc, argv);
         } else if (!strcmp(bn, "notbit-keygen")) {
                 return ntb_keygen(argc, argv);
-        } else if (!strcmp(bn, "notbit")) {
+        } else if (!strcmp(bn, "finvenkisto-server")) {
                 return ntb_daemon(argc, argv);
         } else {
                 fprintf(stderr, "Unknown executable name “%s”\n", argv[0]);

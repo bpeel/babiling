@@ -38,6 +38,6 @@
 /client/data/nekrokodilu.png
 /server/Makefile
 /server/Makefile.in
-/server/notbit
+/server/finvenkisto-server
 *.o
 .deps

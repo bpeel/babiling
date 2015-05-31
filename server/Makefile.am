@@ -1,5 +1,5 @@
 bin_PROGRAMS = \
-	notbit \
+	finvenkisto-server \
 	$(NULL)
 
 AM_CPPFLAGS = \
@@ -8,7 +8,7 @@ AM_CPPFLAGS = \
 	$(SERVER_EXTRA_CFLAGS) \
 	$(NULL)
 
-notbit_SOURCES = \
+finvenkisto_server_SOURCES = \
 	ntb-address.c \
 	ntb-address.h \
 	ntb-base58.c \
@@ -105,11 +105,11 @@ notbit_SOURCES = \
 	main.c \
 	$(NULL)
 
-notbit_LDFLAGS = \
+finvenkisto_server_LDFLAGS = \
 	-pthread \
 	$(NULL)
 
-notbit_LDADD = \
+finvenkisto_server_LDADD = \
 	$(LIBCRYPTO_LIBS) \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
