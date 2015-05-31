@@ -1,6 +1,6 @@
 /*
  * Finvenkisto
- * Copyright (C) 2013  Neil Roberts
+ * Copyright (C) 2013, 2015  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -34,36 +34,21 @@
 #include "fv-util.h"
 #include "fv-buffer.h"
 
-static const uint8_t
-ipv4_magic[12] = {
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff
-};
-
-static const uint8_t
-ipv6_localhost[16] = {
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x01
-};
-
 static void
 fv_netaddress_to_native_ipv4(const struct fv_netaddress *address,
-                              struct sockaddr_in *native)
+                             struct sockaddr_in *native)
 {
         native->sin_family = AF_INET;
-        memcpy(&native->sin_addr.s_addr,
-               address->host + sizeof ipv4_magic,
-               sizeof (uint32_t));
+        native->sin_addr = address->ipv4;
         native->sin_port = htons(address->port);
 }
 
 static void
 fv_netaddress_to_native_ipv6(const struct fv_netaddress *address,
-                              struct sockaddr_in6 *native)
+                             struct sockaddr_in6 *native)
 {
         native->sin6_family = AF_INET6;
-        memcpy(&native->sin6_addr, address->host, sizeof address->host);
+        native->sin6_addr = address->ipv6;
         native->sin6_flowinfo = 0;
         native->sin6_scope_id = 0;
         native->sin6_port = htons(address->port);
@@ -71,9 +56,9 @@ fv_netaddress_to_native_ipv6(const struct fv_netaddress *address,
 
 void
 fv_netaddress_to_native(const struct fv_netaddress *address,
-                         struct fv_netaddress_native *native)
+                        struct fv_netaddress_native *native)
 {
-        if (fv_netaddress_is_ipv6(address)) {
+        if (address->family == AF_INET6) {
                 fv_netaddress_to_native_ipv6(address, &native->sockaddr_in6);
                 native->length = sizeof native->sockaddr_in6;
         } else {
@@ -84,36 +69,35 @@ fv_netaddress_to_native(const struct fv_netaddress *address,
 
 static void
 fv_netaddress_from_native_ipv4(struct fv_netaddress *address,
-                                const struct sockaddr_in *native)
+                               const struct sockaddr_in *native)
 {
-        memcpy(address->host, ipv4_magic, sizeof ipv4_magic);
-        memcpy(address->host + sizeof ipv4_magic,
-               &native->sin_addr,
-               sizeof native->sin_addr);
+        address->family = AF_INET;
+        address->ipv4 = native->sin_addr;
         address->port = ntohs(native->sin_port);
 }
 
 static void
 fv_netaddress_from_native_ipv6(struct fv_netaddress *address,
-                                const struct sockaddr_in6 *native)
+                               const struct sockaddr_in6 *native)
 {
-        memcpy(address->host, &native->sin6_addr, sizeof native->sin6_addr);
+        address->family = AF_INET6;
+        address->ipv6 = native->sin6_addr;
         address->port = ntohs(native->sin6_port);
 }
 
 void
 fv_netaddress_from_native(struct fv_netaddress *address,
-                           const struct fv_netaddress_native *native)
+                          const struct fv_netaddress_native *native)
 {
         switch (native->sockaddr.sa_family) {
         case AF_INET:
                 fv_netaddress_from_native_ipv4(address,
-                                                &native->sockaddr_in);
+                                               &native->sockaddr_in);
                 break;
 
         case AF_INET6:
                 fv_netaddress_from_native_ipv6(address,
-                                                &native->sockaddr_in6);
+                                               &native->sockaddr_in6);
                 break;
 
         default:
@@ -134,17 +118,17 @@ fv_netaddress_to_string(const struct fv_netaddress *address)
         char *buf = fv_alloc(buffer_length);
         int len;
 
-        if (fv_netaddress_is_ipv6(address)) {
+        if (address->family == AF_INET6) {
                 buf[0] = '[';
                 inet_ntop(AF_INET6,
-                          address->host,
+                          &address->ipv6,
                           buf + 1,
                           buffer_length - 1);
                 len = strlen(buf);
                 buf[len++] = ']';
         } else {
                 inet_ntop(AF_INET,
-                          address->host + sizeof ipv4_magic,
+                          &address->ipv4,
                           buf,
                           buffer_length);
                 len = strlen(buf);
@@ -159,8 +143,8 @@ fv_netaddress_to_string(const struct fv_netaddress *address)
 
 bool
 fv_netaddress_from_string(struct fv_netaddress *address,
-                           const char *str,
-                           int default_port)
+                          const char *str,
+                          int default_port)
 {
         struct fv_buffer buffer;
         const char *addr_end;
@@ -182,9 +166,11 @@ fv_netaddress_from_string(struct fv_netaddress *address,
                 fv_buffer_append(&buffer, str + 1, addr_end - str - 1);
                 fv_buffer_append_c(&buffer, '\0');
 
+                address->family = AF_INET6;
+
                 if (inet_pton(AF_INET6,
                               (char *) buffer.data,
-                              address->host) != 1) {
+                              &address->ipv6) != 1) {
                         ret = false;
                         goto out;
                 }
@@ -198,14 +184,14 @@ fv_netaddress_from_string(struct fv_netaddress *address,
                 fv_buffer_append(&buffer, str, addr_end - str);
                 fv_buffer_append_c(&buffer, '\0');
 
+                address->family = AF_INET;
+
                 if (inet_pton(AF_INET,
                               (char *) buffer.data,
-                              address->host + sizeof ipv4_magic) != 1) {
+                              &address->ipv4) != 1) {
                         ret = false;
                         goto out;
                 }
-
-                memcpy(address->host, ipv4_magic, sizeof ipv4_magic);
         }
 
         if (*addr_end == ':') {
@@ -230,53 +216,4 @@ out:
         fv_buffer_destroy(&buffer);
 
         return ret;
-}
-
-bool
-fv_netaddress_is_allowed(const struct fv_netaddress *address,
-                          bool allow_private_addresses)
-{
-        const uint8_t *host;
-
-        if (fv_netaddress_is_ipv6(address)) {
-                /* IPv6 */
-                /* Ignore localhost */
-                if (!memcmp(address->host,
-                            ipv6_localhost,
-                            sizeof ipv6_localhost))
-                        return false;
-                /* Ignore local addresses */
-                if (address->host[0] == 0xfe &&
-                    (address->host[1] & 0xc0) == 0x80)
-                        return false;
-                if (!allow_private_addresses) {
-                        /* Ignore unique local addresses */
-                        if ((address->host[0] & 0xfe) == 0xfc)
-                                return false;
-                }
-        } else {
-                /* IPv4 */
-                host = address->host + sizeof ipv4_magic;
-                /* Ignore localhost */
-                if (host[0] == 127)
-                        return false;
-
-                /* Ignore addresses in the private range */
-                if (!allow_private_addresses) {
-                        if (host[0] == 10)
-                                return false;
-                        if (host[0] == 172 && host[1] >= 16 && host[1] <= 31)
-                                return false;
-                        if (host[0] == 192 && host[1] == 168)
-                                return false;
-                }
-        }
-
-        return true;
-}
-
-bool
-fv_netaddress_is_ipv6(const struct fv_netaddress *address)
-{
-        return memcmp(address->host, ipv4_magic, sizeof ipv4_magic);
 }

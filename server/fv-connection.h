@@ -1,6 +1,6 @@
 /*
  * Finvenkisto
- * Copyright (C) 2013  Neil Roberts
+ * Copyright (C) 2013, 2015  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -33,19 +33,9 @@
 #include "fv-main-context.h"
 #include "fv-signal.h"
 #include "fv-proto.h"
-#include "fv-blob.h"
 
 enum fv_connection_event_type {
-        FV_CONNECTION_EVENT_CONNECT_FAILED,
         FV_CONNECTION_EVENT_ERROR,
-
-        FV_CONNECTION_EVENT_PROXY_CONNECTED,
-        FV_CONNECTION_EVENT_VERSION,
-        FV_CONNECTION_EVENT_INV,
-        FV_CONNECTION_EVENT_ADDR,
-        FV_CONNECTION_EVENT_OBJECT,
-        FV_CONNECTION_EVENT_GETDATA,
-        FV_CONNECTION_EVENT_VERACK
 };
 
 struct fv_connection_event {
@@ -53,71 +43,11 @@ struct fv_connection_event {
         struct fv_connection *connection;
 };
 
-struct fv_connection_version_event {
-        struct fv_connection_event base;
-
-        uint32_t version;
-        uint64_t services;
-        int64_t timestamp;
-
-        struct fv_netaddress addr_recv;
-        struct fv_netaddress addr_from;
-
-        uint64_t nonce;
-        struct fv_proto_var_str user_agent;
-        struct fv_proto_var_int_list stream_numbers;
-};
-
-struct fv_connection_object_event {
-        struct fv_connection_event base;
-
-        enum fv_proto_inv_type type;
-
-        uint64_t nonce;
-        int64_t timestamp;
-        uint64_t stream_number;
-
-        const uint8_t *object_data;
-        size_t object_data_length;
-};
-
-struct fv_connection_inv_event {
-        struct fv_connection_event base;
-
-        uint64_t n_inventories;
-        const uint8_t *inventories;
-};
-
-struct fv_connection_addr_event {
-        struct fv_connection_event base;
-
-        int64_t timestamp;
-        uint32_t stream;
-        uint64_t services;
-        struct fv_netaddress address;
-};
-
-struct fv_connection_getdata_event {
-        struct fv_connection_event base;
-
-        uint64_t n_hashes;
-        const uint8_t *hashes;
-};
-
 struct fv_connection;
 
 struct fv_connection *
-fv_connection_connect(const struct fv_netaddress *address,
-                       struct fv_error **error);
-
-struct fv_connection *
-fv_connection_connect_proxy(const struct fv_netaddress *proxy,
-                             const struct fv_netaddress *address,
-                             struct fv_error **error);
-
-struct fv_connection *
 fv_connection_accept(int server_sock,
-                      struct fv_error **error);
+                     struct fv_error **error);
 
 void
 fv_connection_free(struct fv_connection *conn);
@@ -133,48 +63,5 @@ fv_connection_get_remote_address(struct fv_connection *conn);
 
 void
 fv_connection_send_verack(struct fv_connection *conn);
-
-void
-fv_connection_send_version(struct fv_connection *conn,
-                            uint64_t nonce,
-                            uint16_t local_port);
-
-void
-fv_connection_send_blob(struct fv_connection *conn,
-                         const uint8_t *hash,
-                         struct fv_blob *blob);
-
-void
-fv_connection_begin_getdata(struct fv_connection *conn);
-
-void
-fv_connection_add_getdata_hash(struct fv_connection *conn,
-                                const uint8_t *hash);
-
-void
-fv_connection_end_getdata(struct fv_connection *conn);
-
-void
-fv_connection_begin_addr(struct fv_connection *conn);
-
-void
-fv_connection_add_addr_address(struct fv_connection *conn,
-                                int64_t timestamp,
-                                uint32_t stream,
-                                uint64_t services,
-                                const struct fv_netaddress *address);
-
-void
-fv_connection_end_addr(struct fv_connection *conn);
-
-void
-fv_connection_begin_inv(struct fv_connection *conn);
-
-void
-fv_connection_add_inv_hash(struct fv_connection *conn,
-                            const uint8_t *hash);
-
-void
-fv_connection_end_inv(struct fv_connection *conn);
 
 #endif /* FV_CONNECTION_H */

@@ -28,8 +28,6 @@
 
 #include "fv-error.h"
 #include "fv-signal.h"
-#include "fv-blob.h"
-#include "fv-netaddress.h"
 
 extern struct fv_error_domain
 fv_network_error;
@@ -38,68 +36,15 @@ enum fv_network_error {
         FV_NETWORK_ERROR_INVALID_ADDRESS
 };
 
-enum fv_network_add_object_flags {
-        FV_NETWORK_SKIP_VALIDATION = (1 << 0),
-        FV_NETWORK_DELAY = (1 << 1)
-};
-
-enum fv_network_object_location {
-        FV_NETWORK_OBJECT_LOCATION_NOWHERE,
-        FV_NETWORK_OBJECT_LOCATION_STORE,
-        FV_NETWORK_OBJECT_LOCATION_MEMORY
-};
-
 struct fv_network;
 
 struct fv_network *
-fv_network_new(bool add_default_nodes);
-
-void
-fv_network_add_object_from_data(struct fv_network *nw,
-                                 enum fv_proto_inv_type type,
-                                 const uint8_t *object_data,
-                                 size_t object_data_length,
-                                 enum fv_network_add_object_flags flags,
-                                 const char *source_note);
-
-void
-fv_network_add_blob(struct fv_network *nw,
-                     struct fv_blob *blob,
-                     enum fv_network_add_object_flags flags,
-                     const char *source_note);
-
-void
-fv_network_load_store(struct fv_network *nw, bool bootstrap);
+fv_network_new(void);
 
 bool
 fv_network_add_listen_address(struct fv_network *nw,
-                               const char *address,
-                               struct fv_error **error);
-
-bool
-fv_network_add_peer_address(struct fv_network *nw,
-                             const char *address,
-                             struct fv_error **error);
-
-struct fv_signal *
-fv_network_get_new_object_signal(struct fv_network *nw);
-
-void
-fv_network_set_only_use_explicit_addresses(struct fv_network *nw,
-                                            bool value);
-
-void
-fv_network_set_allow_private_addresses(struct fv_network *nw,
-                                        bool value);
-
-void
-fv_network_set_proxy_address(struct fv_network *nw,
-                              const struct fv_netaddress *addr);
-
-enum fv_network_object_location
-fv_network_get_object(struct fv_network *nw,
-                       const uint8_t *hash,
-                       struct fv_blob **blob);
+                              const char *address,
+                              struct fv_error **error);
 
 void
 fv_network_free(struct fv_network *nw);

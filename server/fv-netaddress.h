@@ -1,6 +1,6 @@
 /*
  * Finvenkisto
- * Copyright (C) 2013  Neil Roberts
+ * Copyright (C) 2013, 2015  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -29,13 +29,13 @@
 #include <netinet/in.h>
 
 struct fv_netaddress {
-        /* This is in network byte order. It is the same format as in
-         * the Bitmessage protocol, ie, if it is an IPv4 address then
-         * it will begin with the 12 bytes 00 00 00 00 00 00 00 00 00
-         * 00 FF FF followed by the 4 byte address */
-        uint8_t host[16];
-        /* In native byte order */
+        short int family;
         uint16_t port;
+        union {
+                /* Both in network byte order */
+                struct in_addr ipv4;
+                struct in6_addr ipv6;
+        };
 };
 
 struct fv_netaddress_native {
@@ -49,25 +49,18 @@ struct fv_netaddress_native {
 
 void
 fv_netaddress_to_native(const struct fv_netaddress *address,
-                         struct fv_netaddress_native *native);
+                        struct fv_netaddress_native *native);
 
 void
 fv_netaddress_from_native(struct fv_netaddress *address,
-                           const struct fv_netaddress_native *native);
+                          const struct fv_netaddress_native *native);
 
 char *
 fv_netaddress_to_string(const struct fv_netaddress *address);
 
 bool
 fv_netaddress_from_string(struct fv_netaddress *address,
-                           const char *str,
-                           int default_port);
-
-bool
-fv_netaddress_is_allowed(const struct fv_netaddress *address,
-                          bool allow_private_addresses);
-
-bool
-fv_netaddress_is_ipv6(const struct fv_netaddress *address);
+                          const char *str,
+                          int default_port);
 
 #endif /* FV_NETADDRESS_H */

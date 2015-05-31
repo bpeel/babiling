@@ -1,6 +1,6 @@
 /*
  * Finvenkisto
- * Copyright (C) 2013  Neil Roberts
+ * Copyright (C) 2013, 2015  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -39,11 +39,8 @@
 #include "fv-main-context.h"
 #include "fv-log.h"
 #include "fv-network.h"
-#include "fv-store.h"
-#include "fv-proto.h"
 #include "fv-file-error.h"
-#include "fv-keyring.h"
-#include "fv-ipc.h"
+#include "fv-proto.h"
 
 static struct fv_error_domain
 arguments_error;
@@ -63,22 +60,12 @@ struct address {
 };
 
 static struct address *option_listen_addresses = NULL;
-static struct address *option_peer_addresses = NULL;
 static char *option_log_file = NULL;
 static bool option_daemonize = false;
 static char *option_user = NULL;
 static char *option_group = NULL;
-static char *option_store_directory = NULL;
-static char *option_maildir = NULL;
-static bool option_only_explicit_addresses = false;
-static bool option_allow_private_addresses = false;
-static bool option_bootstrap = true;
-static bool option_use_proxy = false;
-static bool option_bootstrap_dns = true;
-static struct fv_netaddress option_proxy_address;
-static bool option_listen = true;
 
-static const char options[] = "-a:l:du:g:D:p:eP:hm:LbBr:iT";
+static const char options[] = "-a:l:du:g:p:h";
 
 static void
 add_address(struct address **list,
@@ -119,30 +106,11 @@ free_addresses(struct address *list)
         }
 }
 
-static bool
-handle_proxy(const char *arg,
-             struct fv_error **error)
-{
-        if (!fv_netaddress_from_string(&option_proxy_address, arg, 9050)) {
-                fv_set_error(error,
-                              &arguments_error,
-                              FV_ARGUMENTS_ERROR_INVALID,
-                              "Invalid address: %s",
-                              arg);
-                return false;
-        }
-
-        option_use_proxy = true;
-
-        return true;
-}
-
 static void
 usage(void)
 {
-        printf("Notbit - a Bitmessage → maildir daemon. Version "
-               PACKAGE_VERSION "\n"
-               "usage: notbit [options]...\n"
+        printf("Finvenkisto Server. Version " PACKAGE_VERSION "\n"
+               "usage: finvenkisto-server [options]...\n"
                " -h                    Show this help message\n"
                " -p <port>             Specifies a port to listen on.\n"
                "                       Equivalent to -a [::]:port.\n"
@@ -150,34 +118,13 @@ usage(void)
                "                       specified multiple times. Defaults to\n"
                "                       [::] to listen on port "
                FV_STRINGIFY(FV_PROTO_DEFAULT_PORT) "\n"
-               " -P <address[:port]>   Add to the list of initial peers that\n"
-               "                       might be connected to.\n"
-               " -e                    Only connect to peers specified by "
-               ""                      "-P\n"
                " -l <file>             Specify the pathname for the log file\n"
                "                       Defaults to stdout.\n"
                " -d                    Fork and detach from terminal after\n"
                "                       creating listen socket. (Daemonize)\n"
-               " -T                    Use a local Tor server. Equivalent to\n"
-               "                       -r 127.0.0.1:9050 -B -i\n"
-               " -r <address[:port]>   Specify a SOCKSv5 proxy to use for\n"
-               "                       outgoing connections.\n"
                " -u <user>             Specify a user to run as. Used to drop\n"
                "                       privileges.\n"
                " -g <group>            Specify a group to run as.\n"
-               " -D <datadir>          Specify an alternate location for the\n"
-               "                       object store. Defaults to $XDG_DATA_HOME"
-               ""                      "/notbit\n"
-               " -m <maildir>          Specify the maildir to save messages "
-               "to.\n"
-               " -L                    Allow private addresses for peers\n"
-               " -b                    Don't bootstrap with default peers.\n"
-               "                       Useful for creating your own private\n"
-               "                       network. Note that this requires all\n"
-               "                       nodes to be trustworthy\n"
-               " -B                    Don't bootstrap with DNS. Useful if\n"
-               "                       running under Tor.\n"
-               " -i                    Don't listen for incoming connections."
                "\n");
         exit(EXIT_FAILURE);
 }
@@ -216,15 +163,6 @@ process_arguments(int argc, char **argv, struct fv_error **error)
                         add_port(&option_listen_addresses, optarg);
                         break;
 
-                case 'P':
-                        add_address(&option_peer_addresses, optarg);
-                        break;
-
-                case 'r':
-                        if (!handle_proxy(optarg, error))
-                                goto error;
-                        break;
-
                 case 'l':
                         option_log_file = optarg;
                         break;
@@ -239,43 +177,6 @@ process_arguments(int argc, char **argv, struct fv_error **error)
 
                 case 'g':
                         option_group = optarg;
-                        break;
-
-                case 'D':
-                        option_store_directory = optarg;
-                        break;
-
-                case 'e':
-                        option_only_explicit_addresses = true;
-                        break;
-
-                case 'm':
-                        option_maildir = optarg;
-                        break;
-
-                case 'L':
-                        option_allow_private_addresses = true;
-                        break;
-
-                case 'b':
-                        option_bootstrap = false;
-                        break;
-
-                case 'B':
-                        option_bootstrap_dns = false;
-                        break;
-
-                case 'i':
-                        option_listen = false;
-                        break;
-
-                case 'T':
-                        fv_netaddress_from_string(&option_proxy_address,
-                                                   "127.0.0.1",
-                                                   9050);
-                        option_use_proxy = true;
-                        option_bootstrap_dns = false;
-                        option_listen = false;
                         break;
 
                 case 'h':
@@ -300,8 +201,6 @@ process_arguments(int argc, char **argv, struct fv_error **error)
         return true;
 
 error:
-        free_addresses(option_peer_addresses);
-        option_peer_addresses = NULL;
         free_addresses(option_listen_addresses);
         option_listen_addresses = NULL;
         return false;
@@ -399,8 +298,8 @@ add_listen_address_to_network(struct fv_network *nw,
 
         if (address->address)
                 return fv_network_add_listen_address(nw,
-                                                      address->address,
-                                                      error);
+                                                     address->address,
+                                                     error);
 
         /* If just the port is specified then we'll first try
          * listening on an IPv6 address. Listening on IPv6 should
@@ -436,66 +335,35 @@ add_addresses(struct fv_network *nw,
 {
         struct address *address;
 
-        if (option_listen) {
-                for (address = option_listen_addresses;
-                     address;
-                     address = address->next) {
-                        if (!add_listen_address_to_network(nw,
-                                                           address,
-                                                           error))
-                                return false;
-                }
-        }
-
-        for (address = option_peer_addresses;
+        for (address = option_listen_addresses;
              address;
              address = address->next) {
-                if (!fv_network_add_peer_address(nw,
-                                                  address->address,
-                                                  error))
+                if (!add_listen_address_to_network(nw,
+                                                   address,
+                                                   error))
                         return false;
         }
-
-        if (option_only_explicit_addresses)
-                fv_network_set_only_use_explicit_addresses(nw, true);
-
-        if (option_allow_private_addresses)
-                fv_network_set_allow_private_addresses(nw, true);
 
         return true;
 }
 
 static bool
-set_log_file(struct fv_store *store,
-             struct fv_error **error)
+set_log_file(struct fv_error **error)
 {
-        struct fv_buffer buffer;
-        bool res;
+        const char *log_filename;
 
-        if (option_log_file) {
-                return fv_log_set_file(option_log_file, error);
-        } else if (option_daemonize) {
-                fv_buffer_init(&buffer);
-                fv_buffer_append_string(&buffer,
-                                         fv_store_get_directory(store));
-                if (buffer.length > 0 && buffer.data[buffer.length - 1] != '/')
-                        fv_buffer_append_c(&buffer, '/');
-                fv_buffer_append_string(&buffer, "notbit.log");
+        if (option_log_file)
+                log_filename = option_log_file;
+        else if (option_daemonize)
+                log_filename = "/var/log/finvenkisto.log";
+        else
+                log_filename = "/dev/stdout";
 
-                res = fv_log_set_file((const char *) buffer.data, error);
-
-                fv_buffer_destroy(&buffer);
-
-                return res;
-        } else {
-                return fv_log_set_file("/dev/stdout", error);
-        }
+        return fv_log_set_file(log_filename, error);
 }
 
 static void
-run_main_loop(struct fv_network *nw,
-              struct fv_keyring *keyring,
-              struct fv_store *store)
+run_main_loop(struct fv_network *nw)
 {
         struct fv_main_context_source *quit_source;
         bool quit = false;
@@ -510,13 +378,7 @@ run_main_loop(struct fv_network *nw,
 
         signal(SIGPIPE, SIG_IGN);
 
-        fv_keyring_start(keyring);
         fv_log_start();
-
-        fv_network_load_store(nw, option_bootstrap && option_bootstrap_dns);
-        fv_keyring_load_store(keyring);
-
-        fv_store_start(store);
 
         quit_source = fv_main_context_add_quit(NULL, quit_cb, &quit);
 
@@ -532,66 +394,27 @@ run_main_loop(struct fv_network *nw,
 static int
 run_network(void)
 {
-        struct fv_store *store = NULL;
         struct fv_network *nw;
-        struct fv_keyring *keyring;
-        struct fv_ipc *ipc;
         int ret = EXIT_SUCCESS;
         struct fv_error *error = NULL;
 
-        nw = fv_network_new(option_bootstrap);
-
-        if (option_use_proxy)
-                fv_network_set_proxy_address(nw, &option_proxy_address);
+        nw = fv_network_new();
 
         if (!add_addresses(nw, &error)) {
                 fprintf(stderr, "%s\n", error->message);
                 fv_error_clear(&error);
                 ret = EXIT_FAILURE;
+        } else if (!set_log_file(&error)) {
+                fprintf(stderr, "%s\n", error->message);
+                fv_error_clear(&error);
+                ret = EXIT_FAILURE;
         } else {
-                store = fv_store_new(option_store_directory,
-                                      option_maildir,
-                                      &error);
+                run_main_loop(nw);
 
-                if (store == NULL) {
-                        fprintf(stderr, "%s\n", error->message);
-                        fv_error_clear(&error);
-                        ret = EXIT_FAILURE;
-                } else {
-                        fv_store_set_default(store);
-
-                        if (!set_log_file(store, &error)) {
-                                fprintf(stderr, "%s\n", error->message);
-                                fv_error_clear(&error);
-                                ret = EXIT_FAILURE;
-                        } else {
-                                keyring = fv_keyring_new(nw);
-                                ipc = fv_ipc_new(keyring, &error);
-
-                                if (ipc == NULL) {
-                                        fprintf(stderr, "%s\n", error->message);
-                                        fv_error_clear(&error);
-                                        ret = EXIT_FAILURE;
-                                } else {
-                                        run_main_loop(nw, keyring, store);
-                                        fv_ipc_free(ipc);
-                                }
-
-                                fv_keyring_free(keyring);
-
-                                fv_log_close();
-                        }
-                }
+                fv_log_close();
         }
 
         fv_network_free(nw);
-
-        /* We need to free the store after freeing the network so that
-         * if the network queues anything in the store just before it
-         * is freed then we will be sure to complete the task before
-         * exiting */
-        if (store)
-                fv_store_free(store);
 
         return ret;
 }
@@ -619,7 +442,6 @@ main(int argc, char **argv)
 
         fv_main_context_free(mc);
 
-        free_addresses(option_peer_addresses);
         free_addresses(option_listen_addresses);
 
         return ret;
