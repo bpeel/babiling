@@ -25,8 +25,6 @@ finvenkisto_server_SOURCES = \
 	fv-cpus.h \
 	fv-crypto.c \
 	fv-crypto.h \
-	fv-daemon.c \
-	fv-daemon.h \
 	fv-dns-bootstrap.c \
 	fv-dns-bootstrap.h \
 	fv-ecc.c \
@@ -51,8 +49,6 @@ finvenkisto_server_SOURCES = \
 	fv-key.h \
 	fv-key-value.c \
 	fv-key-value.h \
-	fv-keygen.c \
-	fv-keygen.h \
 	fv-keyring.c \
 	fv-keyring.h \
 	fv-list.c \
@@ -89,8 +85,6 @@ finvenkisto_server_SOURCES = \
 	fv-ref-count.h \
 	fv-save-message.c \
 	fv-save-message.h \
-	fv-sendmail.c \
-	fv-sendmail.h \
 	fv-signal.h \
 	fv-slab.c \
 	fv-slab.h \
