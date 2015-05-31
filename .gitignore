@@ -36,5 +36,9 @@
 /client/data/hud/digits-stamp
 /client/data/hud-stamp
 /client/data/nekrokodilu.png
+/server/Makefile
+/server/Makefile.in
+/server/notbit
+/server/dump-store
 *.o
 .deps

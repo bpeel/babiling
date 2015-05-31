@@ -19,6 +19,11 @@ AM_PROG_CC_C_O
 AC_ISC_POSIX
 AC_C_CONST
 
+FINVENKISTO_EXTRA_CFLAGS=""
+FINVENKISTO_EXTRA_LIBS=""
+SERVER_EXTRA_CFLAGS=""
+SERVER_EXTRA_LIBS=""
+
 AC_C_BIGENDIAN([AC_DEFINE([HAVE_BIG_ENDIAN], [1], [System is big-endian])],
                [AC_DEFINE([HAVE_LITTLE_ENDIAN], [1],
                           [System is little-endian])])
@@ -28,14 +33,99 @@ AC_CHECK_SIZEOF([unsigned long])
 AC_CHECK_LIB([m], sinf)
 AC_CHECK_FUNCS([ffs ffsl])
 
-ALL_WARNING_CFLAGS="-Wall -Wcast-align -Wuninitialized
-                    -Wno-strict-aliasing -Wempty-body -Wformat
-                    -Wformat-security -Winit-self -Wundef
-                    -Wdeclaration-after-statement -Wvla
-                    -Wpointer-arith -Wmissing-declarations"
-AS_COMPILER_FLAGS([WARNING_CFLAGS],
-                  [$ALL_WARNING_CFLAGS])
-AC_SUBST([WARNING_CFLAGS])
+alignof_name=""
+AC_MSG_CHECKING([for alignof])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([const int thing = alignof (int);],
+                                   [(void) 0])],
+                  [alignof_name="alignof"
+                   AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])])
+AC_MSG_CHECKING([for __alignof__])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([const int thing = __alignof__ (int);],
+                                   [(void) 0])],
+                  [alignof_name="__alignof__"
+                   AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])])
+AS_IF([test "x$alignof_name" = "x"],
+      [AC_MSG_ERROR([No operator for alignof found])])
+AC_DEFINE_UNQUOTED([ALIGNOF_NAME], [$alignof_name],
+                   [The name of the alignof operator])
+
+have_sync_ref_count=yes
+AC_MSG_CHECKING([for __sync_fetch_and_add])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([int x;],
+                                   [__sync_fetch_and_add(&x, 1);])],
+                  [AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])
+                   have_sync_ref_count=no])
+AC_MSG_CHECKING([for __sync_fetch_and_sub])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([int x;],
+                                   [__sync_fetch_and_sub(&x, 1);])],
+                  [AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])
+                   have_sync_ref_count=no])
+AS_IF([test "x$have_sync_ref_count" = "xyes"],
+      [AC_DEFINE([HAVE_SYNC_REF_COUNT], [1],
+                 [GCC extensions for atomic ref-counting are available])])
+
+AC_MSG_CHECKING([for _Static_assert])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([_Static_assert (1, "");],
+                                   [(void) 0])],
+                  [AC_DEFINE([HAVE_STATIC_ASSERT], [1],
+                             [Whether _Static_assert can be used or not])
+                   AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])])
+
+have_clock_gettime=no
+AC_CHECK_FUNC([clock_gettime], [have_clock_gettime=yes])
+AS_IF([test "x$have_clock_gettime" = "xno"],
+      [AC_CHECK_LIB([rt], [clock_gettime],
+                    [SERVER_EXTRA_LIBS="$SERVER_EXTRA_LIBS -lrt"],
+                    [clock_gettime required but not found])])
+
+AC_CHECK_FUNCS([getpeereid])
+
+dnl     ============================================================
+dnl     Enable strict compiler flags
+dnl     ============================================================
+
+m4_define([maintainer_default], [yes])
+AC_ARG_ENABLE(
+  [maintainer-flags],
+  [AC_HELP_STRING([--enable-maintainer-flags=@<:@no/yes/error@:>@],
+                  [Use strict compiler flags @<:@default=]maintainer_default[@:>@])],
+  [],
+  enable_maintainer_flags=maintainer_default
+)
+
+MAINTAINER_COMPILER_FLAGS="-Wall -Wcast-align -Wuninitialized
+                           -Wno-strict-aliasing -Wempty-body -Wformat
+                           -Wformat-security -Winit-self -Wundef
+                           -Wdeclaration-after-statement
+                           -Wpointer-arith -Wmissing-declarations"
+
+AS_CASE(
+  [$enable_maintainer_flags],
+  [yes],
+  [
+    AS_COMPILER_FLAGS([MAINTAINER_CFLAGS], [$MAINTAINER_COMPILER_FLAGS])
+  ],
+  [no],
+  [
+  ],
+  [error],
+  [
+    MAINTAINER_COMPILER_FLAGS="$MAINTAINER_COMPILER_FLAGS -Werror"
+    AS_COMPILER_FLAGS([MAINTAINER_CFLAGS], [$MAINTAINER_COMPILER_FLAGS])
+  ],
+  [*],
+  [AC_MSG_ERROR([Invalid option for --enable-maintainer-flags])]
+)
+
+# strip leading spaces
+FINVENKISTO_EXTRA_CFLAGS="$FINVENKISTO_EXTRA_CFLAGS ${MAINTAINER_CFLAGS#*  }"
+
+PKG_CHECK_MODULES(LIBCRYPTO, [libcrypto])
 
 AS_CASE([$host_os],
         [mingw*],
@@ -48,4 +138,5 @@ Makefile
 client/data/Makefile
 client/rply/Makefile
 client/Makefile
+server/Makefile
 )

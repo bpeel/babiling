@@ -5,7 +5,7 @@ bin_PROGRAMS = finvenkisto
 AM_CFLAGS = \
 	$(GL_CFLAGS) \
 	$(SDL_CFLAGS) \
-	$(WARNING_CFLAGS) \
+	$(FINVENKISTO_EXTRA_CFLAGS) \
 	$(NULL)
 
 finvenkisto_SOURCES = \
@@ -66,6 +66,7 @@ fv-map.c : fv-map.png make-map.py
 
 finvenkisto_LDADD = \
 	$(SDL_LIBS) \
+	$(FINVENKISTO_EXTRA_LIBS) \
 	rply/librply.a \
 	$(NULL)
 
