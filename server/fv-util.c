@@ -158,22 +158,3 @@ fv_close(int fd)
 
         return ret;
 }
-
-pthread_t
-fv_create_thread(void *(* thread_func)(void *),
-                  void *user_data)
-{
-        pthread_t thread;
-        int result;
-
-        result = pthread_create(&thread,
-                                NULL, /* attr */
-                                thread_func,
-                                user_data);
-
-        if (result)
-                fv_fatal("Error creating thread: %s",
-                          strerror(result));
-
-        return thread;
-}

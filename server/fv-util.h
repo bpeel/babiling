@@ -26,7 +26,6 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <pthread.h>
 
 #ifdef __GNUC__
 #define FV_NO_RETURN __attribute__((noreturn))
@@ -137,10 +136,6 @@ fv_ascii_tolower(char ch)
         else
                 return ch;
 }
-
-pthread_t
-fv_create_thread(void *(* thread_func)(void *),
-                  void *user_data);
 
 #ifdef HAVE_STATIC_ASSERT
 #define FV_STATIC_ASSERT(EXPRESSION, MESSAGE)  \

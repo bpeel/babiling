@@ -35,6 +35,7 @@
 #include "fv-log.h"
 #include "fv-buffer.h"
 #include "fv-file-error.h"
+#include "fv-thread.h"
 
 static FILE *fv_log_file = NULL;
 static struct fv_buffer fv_log_buffer = FV_BUFFER_STATIC_INIT;
@@ -188,7 +189,7 @@ fv_log_start(void)
         if (!fv_log_available() || fv_log_has_thread)
                 return;
 
-        fv_log_thread = fv_create_thread(fv_log_thread_func,
+        fv_log_thread = fv_thread_create(fv_log_thread_func,
                                            NULL /* thread func arg */);
         fv_log_has_thread = true;
 }

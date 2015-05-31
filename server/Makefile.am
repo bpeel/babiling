@@ -34,6 +34,8 @@ finvenkisto_server_SOURCES = \
 	fv-slice.h \
 	fv-socket.c \
 	fv-socket.h \
+	fv-thread.c \
+	fv-thread.h \
 	fv-util.c \
 	fv-util.h \
 	main.c \
