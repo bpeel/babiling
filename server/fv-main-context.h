@@ -65,10 +65,10 @@ typedef void
                                     void *user_data);
 
 struct fv_main_context *
-fv_main_context_new(void);
+fv_main_context_new(struct fv_error **error);
 
 struct fv_main_context *
-fv_main_context_get_default(void);
+fv_main_context_get_default(struct fv_error **error);
 
 struct fv_main_context_source *
 fv_main_context_add_poll(struct fv_main_context *mc,

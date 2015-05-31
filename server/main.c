@@ -608,7 +608,12 @@ main(int argc, char **argv)
                 return EXIT_FAILURE;
         }
 
-        mc = fv_main_context_get_default();
+        mc = fv_main_context_get_default(&error);
+
+        if (mc == NULL) {
+                fprintf(stderr, "%s\n", error->message);
+                return EXIT_FAILURE;
+        }
 
         ret = run_network();
 

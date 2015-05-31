@@ -25,7 +25,7 @@
 
 #include <errno.h>
 #include <string.h>
-#include <poll.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -40,7 +40,12 @@
 #include "fv-list.h"
 #include "fv-util.h"
 #include "fv-slice.h"
-#include "fv-buffer.h"
+
+/* This is a simple replacement for the GMainLoop which uses
+   epoll. The hope is that it will scale to more connections easily
+   because it doesn't use poll which needs to upload the set of file
+   descriptors every time it blocks and it doesn't have to walk the
+   list of file descriptors to find out which object it belongs to */
 
 struct fv_error_domain
 fv_main_context_error;
@@ -58,23 +63,20 @@ struct fv_main_context {
          * iterating the list */
         pthread_mutex_t idle_mutex;
 
-        /* Number of sources that are currently attached. This is used
-           so we can size the array passed to poll and to check that
-           there aren't any sources left when the main context is
-           destroyed */
+        int epoll_fd;
+        /* Number of sources that are currently attached. This is used so we
+           can size the array passed to epoll_wait to ensure it's possible
+           to process an event for every single source */
         unsigned int n_sources;
-
         /* Array for receiving events */
-        struct fv_buffer poll_array;
-        bool poll_array_dirty;
+        unsigned int events_size;
+        struct epoll_event *events;
 
         /* List of quit sources. All of these get invoked when a quit signal
            is received */
         struct fv_list quit_sources;
 
         struct fv_list idle_sources;
-
-        struct fv_list poll_sources;
 
         struct fv_main_context_source *async_pipe_source;
         int async_pipe[2];
@@ -109,15 +111,28 @@ struct fv_main_context_source {
                 struct {
                         int fd;
                         enum fv_main_context_poll_flags current_flags;
+                        struct fv_main_context_source *idle_source;
+                };
+
+                /* Quit sources */
+                struct {
+                        struct fv_list quit_link;
+                };
+
+                /* Idle sources */
+                struct {
+                        struct fv_list idle_link;
                 };
 
                 /* Timer sources */
-                struct fv_main_context_bucket *bucket;
+                struct {
+                        struct fv_main_context_bucket *bucket;
+                        struct fv_list timer_link;
+                };
         };
 
         void *user_data;
         void *callback;
-        struct fv_list link;
 
         struct fv_main_context *mc;
 };
@@ -135,12 +150,27 @@ FV_SLICE_ALLOCATOR(struct fv_main_context_bucket,
 static struct fv_main_context *fv_main_context_default = NULL;
 
 struct fv_main_context *
-fv_main_context_get_default(void)
+fv_main_context_get_default(struct fv_error **error)
 {
         if (fv_main_context_default == NULL)
-                fv_main_context_default = fv_main_context_new();
+                fv_main_context_default = fv_main_context_new(error);
 
         return fv_main_context_default;
+}
+
+static struct fv_main_context *
+fv_main_context_get_default_or_abort(void)
+{
+        struct fv_main_context *mc;
+        struct fv_error *error = NULL;
+
+        mc = fv_main_context_get_default(&error);
+
+        if (mc == NULL)
+                fv_fatal("failed to create default main context: %s\n",
+                          error->message);
+
+        return mc;
 }
 
 static void
@@ -159,7 +189,7 @@ async_pipe_cb(struct fv_main_context_source *source,
                         fv_warning("Read from quit pipe failed: %s",
                                     strerror(errno));
         } else if (byte == 'Q') {
-                fv_list_for_each(quit_source, &mc->quit_sources, link) {
+                fv_list_for_each(quit_source, &mc->quit_sources, quit_link) {
                         callback = quit_source->callback;
                         callback(quit_source, quit_source->user_data);
                 }
@@ -176,28 +206,27 @@ send_async_byte(struct fv_main_context *mc,
 static void
 fv_main_context_quit_signal_cb(int signum)
 {
-        struct fv_main_context *mc = fv_main_context_get_default();
+        struct fv_main_context *mc = fv_main_context_get_default_or_abort();
 
         send_async_byte(mc, 'Q');
 }
 
-struct fv_main_context *
-fv_main_context_new(void)
+static void
+init_main_context(struct fv_main_context *mc,
+                  int fd)
 {
-        struct fv_main_context *mc = fv_alloc(sizeof *mc);
-
         pthread_mutex_init(&mc->idle_mutex, NULL /* attrs */);
         fv_slice_allocator_init(&mc->source_allocator,
                                  sizeof(struct fv_main_context_source),
                                  FV_ALIGNOF(struct fv_main_context_source));
+        mc->epoll_fd = fd;
         mc->n_sources = 0;
+        mc->events = NULL;
+        mc->events_size = 0;
         mc->monotonic_time_valid = false;
         mc->wall_time_valid = false;
-        mc->poll_array_dirty = true;
-        fv_buffer_init(&mc->poll_array);
         fv_list_init(&mc->quit_sources);
         fv_list_init(&mc->idle_sources);
-        fv_list_init(&mc->poll_sources);
         fv_list_init(&mc->buckets);
         mc->last_timer_time = fv_main_context_get_monotonic_clock(mc);
 
@@ -216,8 +245,73 @@ fv_main_context_new(void)
         }
 
         mc->main_thread = pthread_self();
+}
 
-        return mc;
+struct fv_main_context *
+fv_main_context_new(struct fv_error **error)
+{
+        int fd;
+
+        fd = epoll_create(16);
+
+        if (fd == -1) {
+                if (errno == EINVAL)
+                        fv_set_error(error,
+                                      &fv_main_context_error,
+                                      FV_MAIN_CONTEXT_ERROR_UNSUPPORTED,
+                                      "epoll is unsupported on this system");
+                else
+                        fv_set_error(error,
+                                      &fv_main_context_error,
+                                      FV_MAIN_CONTEXT_ERROR_UNKNOWN,
+                                      "failed to create an "
+                                      "epoll descriptor: %s",
+                                      strerror(errno));
+
+                return NULL;
+        } else {
+                struct fv_main_context *mc = fv_alloc(sizeof *mc);
+
+                init_main_context(mc, fd);
+
+                return mc;
+        }
+}
+
+static uint32_t
+get_epoll_events(enum fv_main_context_poll_flags flags)
+{
+        uint32_t events = 0;
+
+        if (flags & FV_MAIN_CONTEXT_POLL_IN)
+                events |= EPOLLIN | EPOLLRDHUP;
+        if (flags & FV_MAIN_CONTEXT_POLL_OUT)
+                events |= EPOLLOUT;
+
+        return events;
+}
+
+static void
+poll_idle_cb(struct fv_main_context_source *source,
+             void *user_data)
+{
+        fv_main_context_poll_callback callback;
+
+        /* This is used from an idle handler if a file descriptor was
+         * added which doesn't support epoll. Instead it always
+         * reports that the file descriptor is ready for reading and
+         * writing in order to simulate the behaviour of poll */
+
+        source = user_data;
+
+        callback = source->callback;
+
+        callback(source,
+                 source->fd,
+                 source->current_flags &
+                 (FV_MAIN_CONTEXT_POLL_IN |
+                  FV_MAIN_CONTEXT_POLL_OUT),
+                 source->user_data);
 }
 
 struct fv_main_context_source *
@@ -228,9 +322,10 @@ fv_main_context_add_poll(struct fv_main_context *mc,
                           void *user_data)
 {
         struct fv_main_context_source *source;
+        struct epoll_event event;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
         pthread_mutex_lock(&mc->idle_mutex);
         source = fv_slice_alloc(&mc->source_allocator);
@@ -242,10 +337,30 @@ fv_main_context_add_poll(struct fv_main_context *mc,
         source->callback = callback;
         source->type = FV_MAIN_CONTEXT_POLL_SOURCE;
         source->user_data = user_data;
-        source->current_flags = flags;
-        fv_list_insert(&mc->poll_sources, &source->link);
+        source->idle_source = NULL;
 
-        mc->poll_array_dirty = true;
+        event.events = get_epoll_events(flags);
+        event.data.ptr = source;
+
+        if (epoll_ctl(mc->epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1) {
+                /* EPERM will happen if the file descriptor doesn't
+                 * support epoll. This will happen with regular files.
+                 * Instead of poll on the file descriptor we will
+                 * install an idle handler which just always reports
+                 * that the descriptor is ready for reading and
+                 * writing. This simulates what poll would do */
+                if (errno == EPERM) {
+                        source->idle_source =
+                                fv_main_context_add_idle(mc,
+                                                          poll_idle_cb,
+                                                          source);
+                } else {
+                        fv_warning("EPOLL_CTL_ADD failed: %s",
+                                    strerror(errno));
+                }
+        }
+
+        source->current_flags = flags;
 
         return source;
 }
@@ -254,13 +369,26 @@ void
 fv_main_context_modify_poll(struct fv_main_context_source *source,
                              enum fv_main_context_poll_flags flags)
 {
+        struct epoll_event event;
+
         fv_return_if_fail(source->type == FV_MAIN_CONTEXT_POLL_SOURCE);
 
         if (source->current_flags == flags)
                 return;
 
+        if (source->idle_source == NULL) {
+                event.events = get_epoll_events(flags);
+                event.data.ptr = source;
+
+                if (epoll_ctl(source->mc->epoll_fd,
+                              EPOLL_CTL_MOD,
+                              source->fd,
+                              &event) == -1)
+                        fv_warning("EPOLL_CTL_MOD failed: %s",
+                                    strerror(errno));
+        }
+
         source->current_flags = flags;
-        source->mc->poll_array_dirty = true;
 }
 
 struct fv_main_context_source *
@@ -271,7 +399,7 @@ fv_main_context_add_quit(struct fv_main_context *mc,
         struct fv_main_context_source *source;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
         pthread_mutex_lock(&mc->idle_mutex);
         source = fv_slice_alloc(&mc->source_allocator);
@@ -283,7 +411,7 @@ fv_main_context_add_quit(struct fv_main_context *mc,
         source->type = FV_MAIN_CONTEXT_QUIT_SOURCE;
         source->user_data = user_data;
 
-        fv_list_insert(&mc->quit_sources, &source->link);
+        fv_list_insert(&mc->quit_sources, &source->quit_link);
 
         return source;
 }
@@ -316,7 +444,7 @@ fv_main_context_add_timer(struct fv_main_context *mc,
         struct fv_main_context_source *source;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
         pthread_mutex_lock(&mc->idle_mutex);
         source = fv_slice_alloc(&mc->source_allocator);
@@ -329,7 +457,7 @@ fv_main_context_add_timer(struct fv_main_context *mc,
         source->type = FV_MAIN_CONTEXT_TIMER_SOURCE;
         source->user_data = user_data;
 
-        fv_list_insert(&source->bucket->sources, &source->link);
+        fv_list_insert(&source->bucket->sources, &source->timer_link);
 
         return source;
 }
@@ -349,13 +477,13 @@ fv_main_context_add_idle(struct fv_main_context *mc,
         struct fv_main_context_source *source;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
         /* This may be called from a thread other than the main one so
          * we need to guard access to the idle sources lists */
         pthread_mutex_lock(&mc->idle_mutex);
         source = fv_slice_alloc(&mc->source_allocator);
-        fv_list_insert(&mc->idle_sources, &source->link);
+        fv_list_insert(&mc->idle_sources, &source->idle_link);
         mc->n_sources++;
         pthread_mutex_unlock(&mc->idle_mutex);
 
@@ -374,27 +502,33 @@ fv_main_context_remove_source(struct fv_main_context_source *source)
 {
         struct fv_main_context *mc = source->mc;
         struct fv_main_context_bucket *bucket;
-
+        struct epoll_event event;
 
         switch (source->type) {
         case FV_MAIN_CONTEXT_POLL_SOURCE:
-                mc->poll_array_dirty = true;
-                fv_list_remove(&source->link);
+                if (source->idle_source)
+                        fv_main_context_remove_source(source->idle_source);
+                else if (epoll_ctl(mc->epoll_fd,
+                              EPOLL_CTL_DEL,
+                              source->fd,
+                              &event) == -1)
+                        fv_warning("EPOLL_CTL_DEL failed: %s",
+                                    strerror(errno));
                 break;
 
         case FV_MAIN_CONTEXT_QUIT_SOURCE:
-                fv_list_remove(&source->link);
+                fv_list_remove(&source->quit_link);
                 break;
 
         case FV_MAIN_CONTEXT_IDLE_SOURCE:
                 pthread_mutex_lock(&mc->idle_mutex);
-                fv_list_remove(&source->link);
+                fv_list_remove(&source->idle_link);
                 pthread_mutex_unlock(&mc->idle_mutex);
                 break;
 
         case FV_MAIN_CONTEXT_TIMER_SOURCE:
                 bucket = source->bucket;
-                fv_list_remove(&source->link);
+                fv_list_remove(&source->timer_link);
 
                 if (fv_list_empty(&bucket->sources)) {
                         fv_list_remove(&bucket->link);
@@ -456,7 +590,7 @@ emit_bucket(struct fv_main_context_bucket *bucket)
         fv_list_for_each_safe(source,
                                tmp_source,
                                &bucket->sources,
-                               link) {
+                               timer_link) {
                 callback = source->callback;
                 callback(source, source->user_data);
         }
@@ -506,7 +640,7 @@ emit_idle_sources(struct fv_main_context *mc)
 
         fv_list_for_each_safe(source, tmp_source,
                                &mc->idle_sources,
-                               link) {
+                               idle_link) {
                 callback = source->callback;
 
                 pthread_mutex_unlock(&mc->idle_mutex);
@@ -517,107 +651,71 @@ emit_idle_sources(struct fv_main_context *mc)
         pthread_mutex_unlock(&mc->idle_mutex);
 }
 
-static struct fv_main_context_source *
-get_source_for_fd(struct fv_main_context *mc,
-                  int fd)
-{
-        struct fv_main_context_source *source;
-
-        fv_list_for_each(source, &mc->poll_sources, link) {
-                if (source->fd == fd)
-                        return source;
-        }
-
-        fv_fatal("Poll result found for unknown fd");
-}
-
 static void
-handle_poll_result(struct fv_main_context *mc,
-                   const struct pollfd *pollfd)
+handle_epoll_event(struct fv_main_context *mc,
+                   struct epoll_event *event)
 {
-        struct fv_main_context_source *source;
+        struct fv_main_context_source *source = source = event->data.ptr;
         fv_main_context_poll_callback callback;
         enum fv_main_context_poll_flags flags;
 
-        if (pollfd->revents == 0)
-                return;
+        switch (source->type) {
+        case FV_MAIN_CONTEXT_POLL_SOURCE:
+                callback = source->callback;
+                flags = 0;
 
-        source = get_source_for_fd(mc, pollfd->fd);
-
-        callback = source->callback;
-        flags = 0;
-
-        if (pollfd->revents & POLLOUT)
-                flags |= FV_MAIN_CONTEXT_POLL_OUT;
-        if (pollfd->revents & POLLIN)
-                flags |= FV_MAIN_CONTEXT_POLL_IN;
-        if (pollfd->revents & POLLHUP) {
-                /* If the source is polling for read then we'll
-                 * just mark it as ready for reading so that any
-                 * error or EOF will be handled by the read call
-                 * instead of immediately aborting */
-                if ((source->current_flags & FV_MAIN_CONTEXT_POLL_IN))
+                if (event->events & EPOLLOUT)
+                        flags |= FV_MAIN_CONTEXT_POLL_OUT;
+                if (event->events & (EPOLLIN | EPOLLRDHUP))
                         flags |= FV_MAIN_CONTEXT_POLL_IN;
-                else
+                if (event->events & EPOLLHUP) {
+                        /* If the source is polling for read then we'll
+                         * just mark it as ready for reading so that any
+                         * error or EOF will be handled by the read call
+                         * instead of immediately aborting */
+                        if ((source->current_flags & FV_MAIN_CONTEXT_POLL_IN))
+                                flags |= FV_MAIN_CONTEXT_POLL_IN;
+                        else
+                                flags |= FV_MAIN_CONTEXT_POLL_ERROR;
+                }
+                if (event->events & EPOLLERR)
                         flags |= FV_MAIN_CONTEXT_POLL_ERROR;
+
+                callback(source, source->fd, flags, source->user_data);
+                break;
+
+        case FV_MAIN_CONTEXT_QUIT_SOURCE:
+        case FV_MAIN_CONTEXT_TIMER_SOURCE:
+        case FV_MAIN_CONTEXT_IDLE_SOURCE:
+                fv_warn_if_reached();
+                break;
         }
-        if (pollfd->revents & POLLERR)
-                flags |= FV_MAIN_CONTEXT_POLL_ERROR;
-
-        callback(source, source->fd, flags, source->user_data);
-}
-
-static short int
-get_poll_events(enum fv_main_context_poll_flags flags)
-{
-        short int events = 0;
-
-        if (flags & FV_MAIN_CONTEXT_POLL_IN)
-                events |= POLLIN;
-        if (flags & FV_MAIN_CONTEXT_POLL_OUT)
-                events |= POLLOUT;
-
-        return events;
-}
-
-static void
-ensure_poll_array(struct fv_main_context *mc)
-{
-        struct fv_main_context_source *source;
-        struct pollfd *pollfd;
-
-        if (!mc->poll_array_dirty)
-                return;
-
-        mc->poll_array.length = 0;
-
-        fv_list_for_each(source, &mc->poll_sources, link) {
-                fv_buffer_set_length(&mc->poll_array,
-                                      mc->poll_array.length +
-                                      sizeof (struct pollfd));
-                pollfd = (struct pollfd *) (mc->poll_array.data +
-                                            mc->poll_array.length -
-                                            sizeof (struct pollfd));
-                pollfd->fd = source->fd;
-                pollfd->events = get_poll_events(source->current_flags);
-        }
-
-        mc->poll_array_dirty = false;
 }
 
 void
 fv_main_context_poll(struct fv_main_context *mc)
 {
         int n_events;
+        int n_sources;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
-        ensure_poll_array(mc);
+        pthread_mutex_lock(&mc->idle_mutex);
+        n_sources = mc->n_sources;
+        pthread_mutex_unlock(&mc->idle_mutex);
 
-        n_events = poll((struct pollfd *) mc->poll_array.data,
-                        mc->poll_array.length / sizeof (struct pollfd),
-                        get_timeout(mc));
+        if (n_sources > mc->events_size) {
+                fv_free(mc->events);
+                mc->events = fv_alloc(sizeof (struct epoll_event) *
+                                       n_sources);
+                mc->events_size = n_sources;
+        }
+
+        n_events = epoll_wait(mc->epoll_fd,
+                              mc->events,
+                              mc->events_size,
+                              get_timeout(mc));
 
         /* Once we've polled we can assume that some time has passed so our
            cached values of the clocks are no longer valid */
@@ -626,13 +724,12 @@ fv_main_context_poll(struct fv_main_context *mc)
 
         if (n_events == -1) {
                 if (errno != EINTR)
-                        fv_warning("poll failed: %s", strerror(errno));
+                        fv_warning("epoll_wait failed: %s", strerror(errno));
         } else {
-                struct pollfd *pollfds = (struct pollfd *) mc->poll_array.data;
                 int i;
 
-                for (i = 0; i < mc->poll_array.length / sizeof *pollfds; i++)
-                        handle_poll_result(mc, pollfds + i);
+                for (i = 0; i < n_events; i++)
+                        handle_epoll_event(mc, mc->events + i);
 
                 check_timer_sources(mc);
                 emit_idle_sources(mc);
@@ -645,11 +742,11 @@ fv_main_context_get_monotonic_clock(struct fv_main_context *mc)
         struct timespec ts;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
-        /* Because in theory the program doesn't block between calls
-           to poll, we can act as if no time passes between calls.
-           That way we can cache the clock value instead of having to
+        /* Because in theory the program doesn't block between calls to
+           poll, we can act as if no time passes between calls to
+           epoll. That way we can cache the clock value instead of having to
            do a system call every time we need it */
         if (!mc->monotonic_time_valid) {
                 clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -667,11 +764,11 @@ fv_main_context_get_wall_clock(struct fv_main_context *mc)
         time_t now;
 
         if (mc == NULL)
-                mc = fv_main_context_get_default();
+                mc = fv_main_context_get_default_or_abort();
 
-        /* Because in theory the program doesn't block between calls
-           to poll, we can act as if no time passes between calls.
-           That way we can cache the clock value instead of having to
+        /* Because in theory the program doesn't block between calls to
+           poll, we can act as if no time passes between calls to
+           epoll. That way we can cache the clock value instead of having to
            do a system call every time we need it */
         if (!mc->wall_time_valid) {
                 time(&now);
@@ -698,9 +795,9 @@ fv_main_context_free(struct fv_main_context *mc)
                 fv_warning("Sources still remain on a main context "
                             "that is being freed");
 
+        fv_free(mc->events);
         pthread_mutex_destroy(&mc->idle_mutex);
-
-        fv_buffer_destroy(&mc->poll_array);
+        fv_close(mc->epoll_fd);
 
         fv_slice_allocator_destroy(&mc->source_allocator);
 
