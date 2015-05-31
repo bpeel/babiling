@@ -36,6 +36,7 @@
 #include "fv-buffer.h"
 #include "fv-map.h"
 #include "fv-error-message.h"
+#include "fv-network.h"
 
 #define MIN_GL_MAJOR_VERSION 2
 #define MIN_GL_MINOR_VERSION 0
@@ -85,6 +86,7 @@ struct data {
         struct fv_game *game;
         struct fv_logic *logic;
         struct fv_hud *hud;
+        struct fv_network *nw;
 
         SDL_Window *window;
         int last_fb_width, last_fb_height;
@@ -822,6 +824,8 @@ main(int argc, char **argv)
                 goto out;
         }
 
+        data.nw = fv_network_new();
+
         fv_buffer_init(&data.joysticks);
 
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -845,7 +849,7 @@ main(int argc, char **argv)
                 fv_error_message("Failed to create SDL window: %s",
                                  SDL_GetError());
                 ret = EXIT_FAILURE;
-                goto out_sdl;
+                goto out_network;
         }
 
         data.gl_context = create_gl_context(data.window);
@@ -926,7 +930,8 @@ main(int argc, char **argv)
         SDL_GL_DeleteContext(data.gl_context);
  out_window:
         SDL_DestroyWindow(data.window);
- out_sdl:
+ out_network:
+        fv_network_free(data.nw);
         close_joysticks(&data);
         SDL_Quit();
  out:
