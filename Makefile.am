@@ -1,4 +1,4 @@
-SUBDIRS = src
+SUBDIRS = client
 
 EXTRA_DIST = \
 	LEGUMIN.txt \

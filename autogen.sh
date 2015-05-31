@@ -7,7 +7,7 @@ olddir=`pwd`
 
 cd "$srcdir"
 
-test -f src/fv-main.c || {
+test -f client/fv-main.c || {
 	echo "You must run this script in the top-level source directory"
 	exit 1
 }
