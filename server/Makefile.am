@@ -2,8 +2,6 @@ bin_PROGRAMS = \
 	notbit \
 	$(NULL)
 
-noinst_PROGRAMS = dump-store
-
 AM_CPPFLAGS = \
 	$(LIBCRYPTO_CFLAGS) \
 	$(FINVENKISTO_EXTRA_CFLAGS) \
@@ -115,16 +113,4 @@ notbit_LDADD = \
 	$(LIBCRYPTO_LIBS) \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
-	$(NULL)
-
-dump_store_SOURCES = \
-	ntb-buffer.c \
-	ntb-buffer.h \
-	ntb-util.c \
-	ntb-util.h \
-	dump-store.c \
-	$(NULL)
-
-dump_store_LDFLAGS = \
-	-pthread \
 	$(NULL)

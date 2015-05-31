@@ -39,6 +39,5 @@
 /server/Makefile
 /server/Makefile.in
 /server/notbit
-/server/dump-store
 *.o
 .deps
