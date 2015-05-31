@@ -14,6 +14,7 @@ AM_SILENT_RULES([yes])
 
 AC_PROG_CC
 AC_PROG_CPP
+AM_PROG_AR
 AC_PROG_RANLIB
 AM_PROG_CC_C_O
 AC_ISC_POSIX
@@ -139,5 +140,6 @@ Makefile
 client/data/Makefile
 client/rply/Makefile
 client/Makefile
+common/Makefile
 server/Makefile
 )

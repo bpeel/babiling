@@ -50,22 +50,22 @@
   ((uint16_t)                                   \
    (((uint16_t) (x) >> 8) |                     \
     ((uint16_t) (x) << 8)))
-#define FV_SWAP_UINT32(x)                              \
+#define FV_SWAP_UINT32(x)                               \
   ((uint32_t)                                           \
-   ((((uint32_t) (x) & UINT32_C(0x000000ff)) << 24) |   \
-    (((uint32_t) (x) & UINT32_C(0x0000ff00)) << 8) |    \
-    (((uint32_t) (x) & UINT32_C(0x00ff0000)) >> 8) |    \
-    (((uint32_t) (x) & UINT32_C(0xff000000)) >> 24)))
-#define FV_SWAP_UINT64(x)                                              \
+   ((((uint32_t) (x) & UINT32_C (0x000000ff)) << 24) |  \
+    (((uint32_t) (x) & UINT32_C (0x0000ff00)) << 8) |   \
+    (((uint32_t) (x) & UINT32_C (0x00ff0000)) >> 8) |   \
+    (((uint32_t) (x) & UINT32_C (0xff000000)) >> 24)))
+#define FV_SWAP_UINT64(x)                                               \
   ((uint64_t)                                                           \
-   ((((uint64_t) (x) & (uint64_t) UINT64_C(0x00000000000000ff)) << 56) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x000000000000ff00)) << 40) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x0000000000ff0000)) << 24) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x00000000ff000000)) << 8) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x000000ff00000000)) >> 8) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x0000ff0000000000)) >> 24) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0x00ff000000000000)) >> 40) | \
-    (((uint64_t) (x) & (uint64_t) UINT64_C(0xff00000000000000)) >> 56)))
+   ((((uint64_t) (x) & (uint64_t) UINT64_C (0x00000000000000ff)) << 56) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x000000000000ff00)) << 40) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x0000000000ff0000)) << 24) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x00000000ff000000)) << 8) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x000000ff00000000)) >> 8) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x0000ff0000000000)) >> 24) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0x00ff000000000000)) >> 40) | \
+    (((uint64_t) (x) & (uint64_t) UINT64_C (0xff00000000000000)) >> 56)))
 
 #if defined(HAVE_BIG_ENDIAN)
 #define FV_UINT16_FROM_BE(x) (x)
@@ -103,6 +103,9 @@
 
 void *
 fv_alloc(size_t size);
+
+void *
+fv_calloc(size_t size);
 
 void *
 fv_realloc(void *ptr, size_t size);
@@ -168,5 +171,21 @@ fv_ascii_tolower(char ch)
                             __LINE__,                                   \
                             __FILE__);                                  \
         } FV_STMT_END
+
+#ifdef HAVE_FFS
+#include <strings.h>
+#define fv_util_ffs(x) ffs(x)
+#else
+int
+fv_util_ffs(int value);
+#endif
+
+#ifdef HAVE_FFSL
+#include <string.h>
+#define fv_util_ffsl(x) ffsl(x)
+#else
+int
+fv_util_ffsl(long int value);
+#endif
 
 #endif /* FV_UTIL_H */

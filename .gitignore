@@ -2,6 +2,7 @@
 /Makefile.in
 /aclocal.m4
 /autom4te.cache
+/build/ar-lib
 /build/compile
 /build/depcomp
 /build/install-sh
@@ -36,6 +37,9 @@
 /client/data/hud/digits-stamp
 /client/data/hud-stamp
 /client/data/nekrokodilu.png
+/common/Makefile
+/common/Makefile.in
+/common/libcommon.a
 /server/Makefile
 /server/Makefile.in
 /server/finvenkisto-server

@@ -6,6 +6,7 @@ AM_CFLAGS = \
 	$(GL_CFLAGS) \
 	$(SDL_CFLAGS) \
 	$(FINVENKISTO_EXTRA_CFLAGS) \
+	-I$(srcdir)/../common \
 	$(NULL)
 
 finvenkisto_SOURCES = \
@@ -52,8 +53,6 @@ finvenkisto_SOURCES = \
 	fv-shout-painter.h \
 	fv-transform.c \
 	fv-transform.h \
-	fv-util.c \
-	fv-util.h \
 	stb_image.h \
 	$(NULL)
 
@@ -68,6 +67,7 @@ finvenkisto_LDADD = \
 	$(SDL_LIBS) \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	rply/librply.a \
+	$(builddir)/../common/libcommon.a \
 	$(NULL)
 
 EXTRA_DIST = \

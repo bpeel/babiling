@@ -2,9 +2,10 @@ bin_PROGRAMS = \
 	finvenkisto-server \
 	$(NULL)
 
-AM_CPPFLAGS = \
+AM_CFLAGS = \
 	$(FINVENKISTO_EXTRA_CFLAGS) \
 	$(SERVER_EXTRA_CFLAGS) \
+	-I$(srcdir)/../common \
 	$(NULL)
 
 finvenkisto_server_SOURCES = \
@@ -36,8 +37,6 @@ finvenkisto_server_SOURCES = \
 	fv-socket.h \
 	fv-thread.c \
 	fv-thread.h \
-	fv-util.c \
-	fv-util.h \
 	main.c \
 	$(NULL)
 
@@ -48,4 +47,5 @@ finvenkisto_server_LDFLAGS = \
 finvenkisto_server_LDADD = \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
+	$(builddir)/../common/libcommon.a \
 	$(NULL)
