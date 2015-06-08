@@ -47,11 +47,10 @@ enum key_code {
         KEY_CODE_UP,
         KEY_CODE_DOWN,
         KEY_CODE_LEFT,
-        KEY_CODE_RIGHT,
-        KEY_CODE_SHOUT
+        KEY_CODE_RIGHT
 };
 
-#define N_KEYS 5
+#define N_KEYS 4
 
 enum key_type {
         KEY_TYPE_KEYBOARD,
@@ -263,12 +262,7 @@ set_key_state(struct data *data,
 
         data->players[player_num].keys[key].down = state;
 
-        if (key == KEY_CODE_SHOUT) {
-                if (data->menu_state == MENU_STATE_PLAYING && state)
-                        fv_logic_shout(data->logic, player_num);
-        } else {
-                update_direction(data, player_num);
-        }
+        update_direction(data, player_num);
 }
 
 static void
