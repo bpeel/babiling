@@ -29,7 +29,6 @@
 enum fv_logic_state {
         FV_LOGIC_STATE_NO_PLAYERS,
         FV_LOGIC_STATE_RUNNING,
-        FV_LOGIC_STATE_FINA_VENKO
 };
 
 #define FV_LOGIC_MAX_PLAYERS 4
@@ -83,9 +82,6 @@ fv_logic_get_state(struct fv_logic *logic);
 int
 fv_logic_get_score(struct fv_logic *logic,
                    int player_num);
-
-float
-fv_logic_get_time_since_fina_venko(struct fv_logic *logic);
 
 void
 fv_logic_free(struct fv_logic *logic);

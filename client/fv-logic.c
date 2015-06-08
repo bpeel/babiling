@@ -67,10 +67,6 @@ struct fv_logic {
 
         struct fv_logic_player players[FV_LOGIC_MAX_PLAYERS];
         int n_players;
-
-        /* Tick time that the state was changed to
-         * FV_LOGIC_STATE_FINA_VENKO */
-        unsigned int fina_venko_time;
 };
 
 void
@@ -364,10 +360,4 @@ enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic)
 {
         return logic->state;
-}
-
-float
-fv_logic_get_time_since_fina_venko(struct fv_logic *logic)
-{
-        return (logic->last_ticks - logic->fina_venko_time) / 1000.0f;
 }
