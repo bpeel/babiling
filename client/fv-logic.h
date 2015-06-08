@@ -41,7 +41,6 @@ struct fv_logic_person {
         float direction;
         float x, y;
         enum fv_person_type type;
-        bool esperantified;
 };
 
 struct fv_logic_shout {
@@ -92,9 +91,6 @@ fv_logic_set_direction(struct fv_logic *logic,
                        int player_num,
                        bool moving,
                        float direction);
-
-int
-fv_logic_get_n_crocodiles(struct fv_logic *logic);
 
 int
 fv_logic_get_n_players(struct fv_logic *logic);

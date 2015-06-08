@@ -22,8 +22,6 @@
 
 #include <stdint.h>
 
-#define FV_PERSON_N_NPCS 30
-
 enum fv_person_type {
         FV_PERSON_TYPE_FINVENKISTO,
         FV_PERSON_TYPE_BAMBISTO1,
@@ -33,38 +31,5 @@ enum fv_person_type {
         FV_PERSON_TYPE_TOILET_GUY,
         FV_PERSON_TYPE_PYJAMAS,
 };
-
-enum fv_person_motion {
-        FV_PERSON_MOTION_STATIC,
-        FV_PERSON_MOTION_CIRCLE,
-        FV_PERSON_MOTION_RANDOM
-};
-
-struct fv_person_npc {
-        float direction;
-        float x, y;
-        enum fv_person_type type;
-        enum fv_person_motion motion;
-
-        /* Data depending on the type of motion */
-        union {
-                struct {
-                        float radius;
-                } circle;
-
-                struct {
-                        /* The NPCs will walk to random locations
-                         * within this circle */
-                        float center_x, center_y;
-                        float radius;
-                        /* Time in milliseconds between picking a new
-                         * target */
-                        uint32_t retarget_time;
-                } random;
-        };
-};
-
-extern const struct fv_person_npc
-fv_person_npcs[FV_PERSON_N_NPCS];
 
 #endif /* FV_PERSON_H */
