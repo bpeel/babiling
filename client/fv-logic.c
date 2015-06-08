@@ -57,7 +57,6 @@ struct fv_logic_position {
 struct fv_logic_player {
         struct fv_logic_position position;
         float center_x, center_y;
-        int score;
 };
 
 struct fv_logic {
@@ -92,8 +91,6 @@ fv_logic_reset(struct fv_logic *logic,
 
                 player->center_x = player->position.x;
                 player->center_y = player->position.y;
-
-                player->score = 0;
         }
 
         if (n_players == 0)
@@ -347,13 +344,6 @@ int
 fv_logic_get_n_players(struct fv_logic *logic)
 {
         return logic->n_players;
-}
-
-int
-fv_logic_get_score(struct fv_logic *logic,
-                   int player_num)
-{
-        return logic->players[player_num].score;
 }
 
 enum fv_logic_state

@@ -79,10 +79,6 @@ fv_logic_get_n_players(struct fv_logic *logic);
 enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic);
 
-int
-fv_logic_get_score(struct fv_logic *logic,
-                   int player_num);
-
 void
 fv_logic_free(struct fv_logic *logic);
 
