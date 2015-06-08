@@ -34,28 +34,15 @@ enum fv_logic_state {
 
 #define FV_LOGIC_MAX_PLAYERS 4
 
-/* Angle in radians that a shout extends around the player */
-#define FV_LOGIC_SHOUT_ANGLE (M_PI / 6.0f)
-
 struct fv_logic_person {
         float direction;
         float x, y;
         enum fv_person_type type;
 };
 
-struct fv_logic_shout {
-        float x, y;
-        float direction;
-        float distance;
-};
-
 typedef void
 (* fv_logic_person_cb)(const struct fv_logic_person *person,
                        void *user_data);
-
-typedef void
-(* fv_logic_shout_cb)(const struct fv_logic_shout *person,
-                      void *user_data);
 
 struct fv_logic *
 fv_logic_new(void);
@@ -78,11 +65,6 @@ fv_logic_for_each_person(struct fv_logic *logic,
                          fv_logic_person_cb person_cb,
                          void *user_data);
 
-void
-fv_logic_for_each_shout(struct fv_logic *logic,
-                        fv_logic_shout_cb shout_cb,
-                        void *user_data);
-
 /* The direction is given in radians where 0 is the positive x-axis
  * and the angle is measured counter-clockwise from that.
  */
@@ -97,10 +79,6 @@ fv_logic_get_n_players(struct fv_logic *logic);
 
 enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic);
-
-void
-fv_logic_shout(struct fv_logic *logic,
-               int player_num);
 
 int
 fv_logic_get_score(struct fv_logic *logic,
