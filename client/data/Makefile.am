@@ -1,7 +1,6 @@
 HUD_SVGS = \
 	hud/down.svg \
 	hud/left.svg \
-	hud/player_select.svg \
 	hud/push.svg \
 	hud/right.svg \
 	hud/title.svg \

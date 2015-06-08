@@ -75,7 +75,6 @@ struct player {
 };
 
 enum menu_state {
-        MENU_STATE_CHOOSING_N_PLAYERS,
         MENU_STATE_CHOOSING_KEYS,
         MENU_STATE_PLAYING
 };
@@ -114,10 +113,13 @@ reset_menu_state(struct data *data)
 {
         int i, j;
 
-        data->menu_state = MENU_STATE_CHOOSING_N_PLAYERS;
+        data->menu_state = MENU_STATE_CHOOSING_KEYS;
         data->start_time = SDL_GetTicks();
         data->viewports_dirty = true;
         data->n_viewports = 1;
+        data->n_players = 1;
+        data->next_player = 0;
+        data->next_key = 0;
 
         for (i = 0; i < FV_LOGIC_MAX_PLAYERS; i++) {
                 for (j = 0; j < N_KEYS; j++) {
@@ -273,9 +275,6 @@ handle_key(struct data *data,
         int i, j;
 
         switch (data->menu_state) {
-        case MENU_STATE_CHOOSING_N_PLAYERS:
-                break;
-
         case MENU_STATE_CHOOSING_KEYS:
                 for (i = 0; i < data->next_player; i++) {
                         for (j = 0; j < N_KEYS; j++) {
@@ -322,20 +321,6 @@ handle_other_key(struct data *data,
 {
         struct key key;
 
-        if (data->menu_state == MENU_STATE_CHOOSING_N_PLAYERS) {
-                if (event->state == SDL_PRESSED &&
-                    event->keysym.sym >= SDLK_1 &&
-                    event->keysym.sym < SDLK_1 + FV_LOGIC_MAX_PLAYERS) {
-                        data->n_players = event->keysym.sym - SDLK_1 + 1;
-                        data->next_player = 0;
-                        data->next_key = 0;
-                        data->menu_state = MENU_STATE_CHOOSING_KEYS;
-                        data->viewports_dirty = true;
-                }
-
-                return;
-        }
-
         key.type = KEY_TYPE_KEYBOARD;
         key.keycode = event->keysym.sym;
         key.down = event->state == SDL_PRESSED;
@@ -350,7 +335,7 @@ handle_key_event(struct data *data,
         switch (event->keysym.sym) {
         case SDLK_ESCAPE:
                 if (event->state == SDL_PRESSED) {
-                        if (data->menu_state == MENU_STATE_CHOOSING_N_PLAYERS)
+                        if (data->menu_state == MENU_STATE_CHOOSING_KEYS)
                                 data->quit = true;
                         else
                                 reset_menu_state(data);
@@ -490,9 +475,6 @@ paint_hud(struct data *data,
           int w, int h)
 {
         switch (data->menu_state) {
-        case MENU_STATE_CHOOSING_N_PLAYERS:
-                fv_hud_paint_player_select(data->hud, w, h);
-                break;
         case MENU_STATE_CHOOSING_KEYS:
                 fv_hud_paint_key_select(data->hud,
                                         w, h,
@@ -528,10 +510,7 @@ update_viewports(struct data *data)
         if (!data->viewports_dirty)
                 return;
 
-        if (data->menu_state == MENU_STATE_CHOOSING_N_PLAYERS)
-                data->n_viewports = 1;
-        else
-                data->n_viewports = data->n_players;
+        data->n_viewports = data->n_players;
 
         viewport_width = data->last_fb_width;
         viewport_height = data->last_fb_height;

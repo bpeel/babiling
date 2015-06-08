@@ -273,23 +273,6 @@ fv_hud_add_title(struct fv_hud *hud)
 }
 
 void
-fv_hud_paint_player_select(struct fv_hud *hud,
-                           int screen_width,
-                           int screen_height)
-{
-        fv_hud_begin_rectangles(hud, screen_width, screen_height);
-        fv_hud_add_title(hud);
-        fv_hud_add_rectangle(hud,
-                             screen_width / 2 -
-                             fv_hud_image_player_select.w / 2,
-                             screen_height / 2 -
-                             fv_hud_image_player_select.h -
-                             10,
-                             &fv_hud_image_player_select);
-        fv_hud_end_rectangles(hud);
-}
-
-void
 fv_hud_paint_key_select(struct fv_hud *hud,
                         int screen_width,
                         int screen_height,
