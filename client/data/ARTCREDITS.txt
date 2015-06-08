@@ -46,13 +46,6 @@ bambo1.png
 bambo2.png
 bambo3.png
 
-crocodile.svg
-(based on the public domain crocodile sign from here
- https://commons.wikimedia.org/wiki/File:Crocodile_warning_sign_02.svg)
-
-star.svg
-fina.svg
-venko.svg
 gufujestro.png
 sleeping-bag1.png
 sleeping-bag2.png

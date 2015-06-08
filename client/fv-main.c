@@ -501,9 +501,6 @@ paint_hud(struct data *data,
                                         data->n_players);
                 break;
         case MENU_STATE_PLAYING:
-                fv_hud_paint_game_state(data->hud,
-                                        w, h,
-                                        data->logic);
                 break;
         }
 }

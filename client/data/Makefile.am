@@ -1,40 +1,15 @@
 HUD_SVGS = \
-	hud/fina.svg \
-	hud/crocodile.svg \
 	hud/down.svg \
 	hud/left.svg \
 	hud/player_select.svg \
 	hud/push.svg \
 	hud/right.svg \
-	hud/star.svg \
 	hud/title.svg \
 	hud/up.svg \
-	hud/venko.svg \
 	$(NULL)
-
-HUD_DIGITS = \
-	hud/digit0.png \
-	hud/digit1.png \
-	hud/digit2.png \
-	hud/digit3.png \
-	hud/digit4.png \
-	hud/digit5.png \
-	hud/digit6.png \
-	hud/digit7.png \
-	hud/digit8.png \
-	hud/digit9.png \
-	$(NULL)
-
-$(HUD_DIGITS) : hud/digits-stamp
-
-hud/digits-stamp : make-digits.py
-	$(AM_V_GEN)mkdir -p $(builddir)/hud
-	$(AM_V_at)python3 $(srcdir)/make-digits.py
-	$(AM_V_at)touch $@
 
 HUD_PNGS = \
 	$(HUD_SVGS:.svg=.png) \
-	$(HUD_DIGITS) \
 	$(NULL)
 
 OTHER_SVGS = \
@@ -114,11 +89,8 @@ EXTRA_DIST = \
 	hud.png \
 	hud-layout.h \
 	make-atlas.py \
-	make-digits.py \
 	make-map-texture.py \
-	hud/digits-stamp \
 	hud-stamp \
-	$(HUD_DIGITS) \
 	$(MODELS:.ply=.blend) \
 	$(BLOCK_IMAGES) \
 	$(NULL)
@@ -139,6 +111,5 @@ DISTCLEANFILES = \
 	$(HUD_PNGS) \
 	hud-layout.h \
 	hud.png \
-	hud/digits-stamp \
 	hud-stamp \
 	$(NULL)
