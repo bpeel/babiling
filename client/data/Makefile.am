@@ -39,7 +39,6 @@ HUD_PNGS = \
 	$(NULL)
 
 OTHER_SVGS = \
-	nekrokodilu.svg \
 	$(NULL)
 
 OTHER_PNGS = $(OTHER_SVGS:.svg=.png)
