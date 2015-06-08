@@ -27,12 +27,8 @@ uniform sampler2D tex;
 #define textureFunc texture2D
 #endif
 
-varying float green_tint;
-
 void
 main()
 {
-        gl_FragColor = mix(textureFunc(tex, tex_coord),
-                           vec4(0.0, 1.0, 0.0, 1.0),
-                           green_tint);
+        gl_FragColor = textureFunc(tex, tex_coord);
 }

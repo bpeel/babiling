@@ -57,7 +57,6 @@ struct fv_person_painter {
         GLuint textures[FV_N_ELEMENTS(textures)];
 
         GLuint transform_uniform;
-        GLuint green_tint_uniform;
 
         bool use_instancing;
 };
@@ -65,7 +64,6 @@ struct fv_person_painter {
 struct fv_person_painter_instance {
         float mvp[16];
         uint8_t tex_layer;
-        uint8_t green_tint;
 };
 
 #define FV_PERSON_PAINTER_MAX_INSTANCES 32
@@ -196,8 +194,6 @@ set_up_instanced_arrays(struct fv_person_painter *painter)
                 offsetof(struct fv_person_painter_instance, mvp[0]);
         const size_t tex_layer_offset =
                 offsetof(struct fv_person_painter_instance, tex_layer);
-        const size_t green_tint_offset =
-                offsetof(struct fv_person_painter_instance, green_tint);
         int i;
 
         attrib = fv_gl.glGetAttribLocation(painter->program, "transform");
@@ -226,19 +222,6 @@ set_up_instanced_arrays(struct fv_person_painter *painter)
                                       1, /* divisor */
                                       painter->instance_buffer,
                                       tex_layer_offset);
-
-        attrib = fv_gl.glGetAttribLocation(painter->program,
-                                           "green_tint_attrib");
-
-        fv_array_object_set_attribute(painter->model.array,
-                                      attrib,
-                                      1, /* size */
-                                      GL_UNSIGNED_BYTE,
-                                      GL_TRUE, /* normalized */
-                                      instance_size,
-                                      1, /* divisor */
-                                      painter->instance_buffer,
-                                      green_tint_offset);
 }
 
 struct fv_person_painter *
@@ -274,9 +257,6 @@ fv_person_painter_new(struct fv_shader_data *shader_data)
                 painter->transform_uniform =
                         fv_gl.glGetUniformLocation(painter->program,
                                                    "transform");
-                painter->green_tint_uniform =
-                        fv_gl.glGetUniformLocation(painter->program,
-                                                   "green_tint_attrib");
         }
 
         tex_uniform = fv_gl.glGetUniformLocation(painter->program, "tex");
@@ -333,7 +313,6 @@ paint_person_cb(const struct fv_logic_person *person,
         struct fv_person_painter_instance *instance;
         struct paint_closure *data = user_data;
         GLsizei buffer_size;
-        float green_tint;
 
         /* Don't paint people that are out of the visible range */
         if (fabsf(person->x - data->paint_state->center_x) - 0.5f >=
@@ -353,8 +332,6 @@ paint_person_cb(const struct fv_logic_person *person,
                          0.0f, 0.0f, 1.0f);
         fv_transform_update_derived_values(&data->transform);
 
-        green_tint = person->esperantified ? 120 : 0;
-
         if (data->painter->use_instancing) {
                 if (data->n_instances == 0) {
                         buffer_size = (instance_size *
@@ -371,7 +348,6 @@ paint_person_cb(const struct fv_logic_person *person,
                        &data->transform.mvp.xx,
                        sizeof instance->mvp);
                 instance->tex_layer = person->type;
-                instance->green_tint = green_tint;
 
                 data->n_instances++;
         } else {
@@ -381,8 +357,6 @@ paint_person_cb(const struct fv_logic_person *person,
                                          1, /* count */
                                          GL_FALSE, /* transpose */
                                          &data->transform.mvp.xx);
-                fv_gl.glUniform1f(data->painter->green_tint_uniform,
-                                  green_tint / 255.0f);
                 fv_model_paint(&data->painter->model);
         }
 }
