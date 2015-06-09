@@ -127,7 +127,7 @@ try_connect(struct fv_network *nw)
         addr.sin_port = htons(FV_PROTO_DEFAULT_PORT);
 
         ret = connect(sock, (struct sockaddr *) &addr, sizeof addr);
-        if (ret == -1)
+        if (ret == -1 && errno != EINPROGRESS)
                 goto error_socket;
 
         nw->sock = sock;
