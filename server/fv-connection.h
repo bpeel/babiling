@@ -79,7 +79,4 @@ fv_connection_get_remote_address_string(struct fv_connection *conn);
 const struct fv_netaddress *
 fv_connection_get_remote_address(struct fv_connection *conn);
 
-void
-fv_connection_send_verack(struct fv_connection *conn);
-
 #endif /* FV_CONNECTION_H */
