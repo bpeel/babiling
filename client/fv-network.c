@@ -27,6 +27,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <fcntl.h>
+#include <string.h>
 
 #include "fv-network.h"
 #include "fv-util.h"
@@ -37,8 +38,19 @@ struct fv_network {
         SDL_mutex *mutex;
         int wakeup_pipe[2];
         int sock;
-        bool connected;
+
+        /* This state is accessed globally and needs the mutex */
+
         bool quit;
+
+        /* This state is only accessed by the network thread so it
+         * doesn't need the mutex
+         */
+
+        bool connected;
+
+        uint8_t read_buf[1024];
+        size_t read_buf_pos;
 
         /* Current number of milliseconds to wait before trying to
          * connect. Doubles after each unsucessful connection up to a
@@ -92,6 +104,7 @@ try_connect(struct fv_network *nw)
         int flags;
 
         nw->connected = false;
+        nw->read_buf_pos = 0;
 
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1)
@@ -119,16 +132,139 @@ error:
         set_connect_error(nw);
 }
 
-static void
+static bool
+handle_player_id(struct fv_network *nw,
+                 const uint8_t *message)
+{
+        uint64_t player_id;
+
+        if (fv_proto_read_command(message,
+                                  FV_PROTO_TYPE_UINT64, &player_id,
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
+handle_consistent(struct fv_network *nw,
+                  const uint8_t *message)
+{
+        if (fv_proto_read_command(message,
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
+handle_n_players(struct fv_network *nw,
+                 const uint8_t *message)
+{
+        uint16_t n_players;
+
+        if (fv_proto_read_command(message,
+                                  FV_PROTO_TYPE_UINT16, &n_players,
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
+handle_player_position(struct fv_network *nw,
+                       const uint8_t *message)
+{
+        uint16_t player_num;
+        uint32_t x_position;
+        uint32_t y_position;
+        uint32_t direction;
+
+        if (fv_proto_read_command(message,
+                                  FV_PROTO_TYPE_UINT16, &player_num,
+                                  FV_PROTO_TYPE_UINT32, &x_position,
+                                  FV_PROTO_TYPE_UINT32, &y_position,
+                                  FV_PROTO_TYPE_UINT16, &direction,
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
 handle_server_data(struct fv_network *nw)
 {
-        char buf[1024];
+        uint16_t payload_length;
+        const uint8_t *message;
+        size_t pos = 0;
         int got;
 
-        got = read(nw->sock, buf, sizeof buf);
+        got = read(nw->sock,
+                   nw->read_buf + nw->read_buf_pos,
+                   sizeof nw->read_buf - nw->read_buf_pos);
 
-        if (got == -1 || got == 0)
+        if (got == -1 || got == 0) {
                 set_socket_error(nw);
+                return false;
+        }
+
+        nw->read_buf_pos += got;
+
+        while (pos + FV_PROTO_HEADER_SIZE <= nw->read_buf_pos) {
+                message = nw->read_buf + pos;
+                payload_length = fv_proto_get_payload_length(message);
+
+                if (payload_length + FV_PROTO_HEADER_SIZE >
+                    sizeof nw->read_buf) {
+                        /* The server has sent a message that we can't
+                         * fit in the read buffer. There shouldn't be
+                         * any messages this big so something has gone
+                         * wrong.
+                         */
+                        set_socket_error(nw);
+                        return false;
+                }
+
+                /* If we haven't got a complete message then stop processing */
+                if (pos + payload_length + FV_PROTO_HEADER_SIZE >
+                    sizeof nw->read_buf)
+                        break;
+
+                switch (fv_proto_get_message_id(message)) {
+                case FV_PROTO_PLAYER_ID:
+                        if (!handle_player_id(nw, message))
+                                return false;
+                        break;
+                case FV_PROTO_CONSISTENT:
+                        if (!handle_consistent(nw, message))
+                                return false;
+                        break;
+                case FV_PROTO_N_PLAYERS:
+                        if (!handle_n_players(nw, message))
+                                return false;
+                        break;
+                case FV_PROTO_PLAYER_POSITION:
+                        if (!handle_player_position(nw, message))
+                                return false;
+                        break;
+                }
+
+                pos += payload_length + FV_PROTO_HEADER_SIZE;
+        }
+
+        /* Move any remaining partial message to the beginning of the buffer */
+        memmove(nw->read_buf, nw->read_buf + pos, nw->read_buf_pos - pos);
+        nw->read_buf_pos -= pos;
+
+        return true;
 }
 
 static int
