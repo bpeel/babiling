@@ -429,7 +429,8 @@ thread_func(void *user_data)
                                 try_connect(nw);
                         }
                 } else {
-                        if ((pollfd[1].revents & POLLOUT))
+                        if ((pollfd[1].revents & (POLLOUT | POLLERR)) ==
+                            POLLOUT)
                                 set_connected(nw);
 
                         if ((pollfd[1].revents & POLLERR)) {
