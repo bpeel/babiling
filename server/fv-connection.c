@@ -35,7 +35,6 @@
 #include "fv-connection.h"
 #include "fv-proto.h"
 #include "fv-util.h"
-#include "fv-slice.h"
 #include "fv-main-context.h"
 #include "fv-buffer.h"
 #include "fv-log.h"
@@ -54,9 +53,6 @@ struct fv_connection {
 
         struct fv_signal event_signal;
 };
-
-FV_SLICE_ALLOCATOR(struct fv_connection,
-                    fv_connection_allocator);
 
 static bool
 emit_event(struct fv_connection *conn,
@@ -342,7 +338,7 @@ fv_connection_free(struct fv_connection *conn)
         fv_buffer_destroy(&conn->out_buf);
         fv_close(conn->sock);
 
-        fv_slice_free(&fv_connection_allocator, conn);
+        fv_free(conn);
 }
 
 static struct fv_connection *
@@ -351,7 +347,7 @@ fv_connection_new_for_socket(int sock,
 {
         struct fv_connection *conn;
 
-        conn = fv_slice_alloc(&fv_connection_allocator);
+        conn = fv_alloc(sizeof *conn);
 
         conn->sock = sock;
         conn->remote_address_string = fv_netaddress_to_string(remote_address);
