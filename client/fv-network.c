@@ -399,7 +399,7 @@ thread_func(void *user_data)
                         pollfd[1].fd = nw->sock;
                         pollfd[1].events = POLLIN | POLLHUP;
                         if (needs_write_poll(nw))
-                                pollfd[1].revents |= POLLOUT;
+                                pollfd[1].events |= POLLOUT;
                         pollfd[1].revents = 0;
                         n_pollfds++;
                 }
