@@ -43,7 +43,6 @@
 #include "fv-socket.h"
 
 struct fv_connection {
-        struct fv_netaddress remote_address;
         char *remote_address_string;
         struct fv_main_context_source *socket_source;
         int sock;
@@ -355,7 +354,6 @@ fv_connection_new_for_socket(int sock,
         conn = fv_slice_alloc(&fv_connection_allocator);
 
         conn->sock = sock;
-        conn->remote_address = *remote_address;
         conn->remote_address_string = fv_netaddress_to_string(remote_address);
 
         fv_signal_init(&conn->event_signal);
@@ -383,12 +381,6 @@ const char *
 fv_connection_get_remote_address_string(struct fv_connection *conn)
 {
         return conn->remote_address_string;
-}
-
-const struct fv_netaddress *
-fv_connection_get_remote_address(struct fv_connection *conn)
-{
-        return &conn->remote_address;
 }
 
 struct fv_connection *
