@@ -36,11 +36,29 @@
 
 enum fv_connection_event_type {
         FV_CONNECTION_EVENT_ERROR,
+
+        FV_CONNECTION_EVENT_NEW_PLAYER,
+        FV_CONNECTION_EVENT_RECONNECT,
+        FV_CONNECTION_EVENT_UPDATE_POSITION,
 };
 
 struct fv_connection_event {
         enum fv_connection_event_type type;
         struct fv_connection *connection;
+};
+
+struct fv_connection_reconnect_event {
+        struct fv_connection_event base;
+
+        uint64_t player_id;
+};
+
+struct fv_connection_update_position_event {
+        struct fv_connection_event base;
+
+        uint32_t x_position;
+        uint32_t y_position;
+        uint16_t direction;
 };
 
 struct fv_connection;

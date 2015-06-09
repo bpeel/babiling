@@ -48,7 +48,9 @@ struct fv_connection {
         struct fv_main_context_source *socket_source;
         int sock;
 
-        struct fv_buffer in_buf;
+        uint8_t read_buf[1024];
+        size_t read_buf_pos;
+
         struct fv_buffer out_buf;
 
         struct fv_signal event_signal;
@@ -130,18 +132,145 @@ update_poll_flags(struct fv_connection *conn)
         fv_main_context_modify_poll(conn->socket_source, flags);
 }
 
+static bool
+handle_new_player(struct fv_connection *conn,
+                  const uint8_t *data)
+{
+        struct fv_connection_event event;
+
+        if (fv_proto_read_command(data, FV_PROTO_TYPE_NONE) == -1) {
+                fv_log("Invalid new player command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_NEW_PLAYER,
+                          &event);
+}
+
+static bool
+handle_reconnect(struct fv_connection *conn,
+                 const uint8_t *data)
+{
+        struct fv_connection_reconnect_event event;
+
+        if (fv_proto_read_command(data,
+
+                                  FV_PROTO_TYPE_UINT64,
+                                  &event.player_id,
+
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                fv_log("Invalid reconnect command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_UPDATE_POSITION,
+                          &event.base);
+}
+
+static bool
+handle_update_position(struct fv_connection *conn,
+                       const uint8_t *data)
+{
+        struct fv_connection_update_position_event event;
+
+        if (fv_proto_read_command(data,
+
+                                  FV_PROTO_TYPE_UINT32,
+                                  &event.x_position,
+
+                                  FV_PROTO_TYPE_UINT32,
+                                  &event.y_position,
+
+                                  FV_PROTO_TYPE_UINT16,
+                                  &event.direction,
+
+                                  FV_PROTO_TYPE_NONE) == -1) {
+                fv_log("Invalid update position command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_UPDATE_POSITION,
+                          &event.base);
+}
+
+static bool
+process_command(struct fv_connection *conn,
+                const uint8_t *data)
+{
+        switch (fv_proto_get_message_id(data)) {
+        case FV_PROTO_NEW_PLAYER:
+                return handle_new_player(conn, data);
+        case FV_PROTO_RECONNECT:
+                return handle_reconnect(conn, data);
+        case FV_PROTO_UPDATE_POSITION:
+                return handle_update_position(conn, data);
+        }
+
+        /* Unknown command which we'll just ignore */
+        return true;
+}
+
+static void
+process_commands(struct fv_connection *conn)
+{
+        uint16_t payload_length;
+        uint8_t *data = conn->read_buf;
+        size_t length = conn->read_buf_pos;
+
+        while (true) {
+                if (length < FV_PROTO_HEADER_SIZE)
+                        break;
+
+                payload_length = fv_proto_get_payload_length(data);
+
+                /* Don't let the client try to send a command that
+                 * would overflow the read buffer. All of the commands
+                 * in the protocol are quite short so something has
+                 * gone wrong if this happens.
+                 */
+                if (payload_length + FV_PROTO_HEADER_SIZE >
+                    sizeof (conn->read_buf)) {
+                        fv_log("Client %s sent a command that is "
+                               "too long (%lu)",
+                               conn->remote_address_string,
+                               (unsigned long)
+                               (payload_length + FV_PROTO_HEADER_SIZE));
+                        set_error_state(conn);
+                        return;
+                }
+
+                if (length < FV_PROTO_HEADER_SIZE + payload_length)
+                        break;
+
+                if (!process_command(conn, data))
+                        return;
+
+                data += payload_length + FV_PROTO_HEADER_SIZE;
+                length -= payload_length + FV_PROTO_HEADER_SIZE;
+        }
+
+        memmove(conn->read_buf, data, length);
+        conn->read_buf_pos = length;
+}
+
 static void
 handle_read(struct fv_connection *conn)
 {
         int got;
 
-        fv_buffer_ensure_size(&conn->in_buf,
-                               conn->in_buf.length + 1024);
-
         do {
                 got = read(conn->sock,
-                           conn->in_buf.data + conn->in_buf.length,
-                           conn->in_buf.size - conn->in_buf.length);
+                           conn->read_buf + conn->read_buf_pos,
+                           sizeof conn->read_buf - conn->read_buf_pos);
         } while (got == -1 && errno == EINTR);
 
         if (got == 0) {
@@ -156,10 +285,9 @@ handle_read(struct fv_connection *conn)
                         set_error_state(conn);
                 }
         } else {
-                conn->in_buf.length += got;
+                conn->read_buf_pos += got;
 
-                /* For now just drop the data on the floor */
-                conn->in_buf.length = 0;
+                process_commands(conn);
         }
 }
 
@@ -212,7 +340,6 @@ fv_connection_free(struct fv_connection *conn)
         remove_sources(conn);
 
         fv_free(conn->remote_address_string);
-        fv_buffer_destroy(&conn->in_buf);
         fv_buffer_destroy(&conn->out_buf);
         fv_close(conn->sock);
 
@@ -240,7 +367,7 @@ fv_connection_new_for_socket(int sock,
                                           connection_poll_cb,
                                           conn);
 
-        fv_buffer_init(&conn->in_buf);
+        conn->read_buf_pos = 0;
         fv_buffer_init(&conn->out_buf);
 
         return conn;
