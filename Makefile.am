@@ -2,6 +2,7 @@ SUBDIRS = \
 	common \
 	client \
 	server \
+	doc \
 	$(NULL)
 
 EXTRA_DIST = \

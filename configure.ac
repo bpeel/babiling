@@ -141,5 +141,6 @@ client/data/Makefile
 client/rply/Makefile
 client/Makefile
 common/Makefile
+doc/Makefile
 server/Makefile
 )

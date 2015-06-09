@@ -39,6 +39,8 @@
 /common/Makefile
 /common/Makefile.in
 /common/libcommon.a
+/doc/Makefile
+/doc/Makefile.in
 /server/Makefile
 /server/Makefile.in
 /server/finvenkisto-server
