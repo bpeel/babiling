@@ -29,7 +29,6 @@
 #include "fv-logic.h"
 #include "fv-gl.h"
 #include "fv-array-object.h"
-#include "fv-ease.h"
 #include "fv-map-buffer.h"
 
 struct fv_hud_vertex {
