@@ -48,9 +48,15 @@ struct fv_network {
          */
 
         bool connected;
+        bool sent_hello;
+        bool has_player_id;
+        uint64_t player_id;
 
         uint8_t read_buf[1024];
         size_t read_buf_pos;
+
+        uint8_t write_buf[1024];
+        size_t write_buf_pos;
 
         /* Current number of milliseconds to wait before trying to
          * connect. Doubles after each unsucessful connection up to a
@@ -104,7 +110,9 @@ try_connect(struct fv_network *nw)
         int flags;
 
         nw->connected = false;
+        nw->sent_hello = false;
         nw->read_buf_pos = 0;
+        nw->write_buf_pos = 0;
 
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1)
@@ -130,6 +138,102 @@ error_socket:
         fv_close(sock);
 error:
         set_connect_error(nw);
+}
+
+static bool
+needs_write_poll(struct fv_network *nw)
+{
+        /* If we're not connected then we'll poll for writing so that
+         * we can detect a successful connection.
+         */
+        if (!nw->connected)
+                return true;
+
+        if (!nw->sent_hello)
+                return true;
+
+        if (nw->write_buf_pos > 0)
+                return true;
+
+        return false;
+}
+
+static bool
+write_new_player(struct fv_network *nw)
+{
+        ssize_t res;
+
+        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
+                                     sizeof nw->write_buf - nw->write_buf_pos,
+                                     FV_PROTO_NEW_PLAYER,
+                                     FV_PROTO_TYPE_NONE);
+
+        if (res != -1) {
+                nw->sent_hello = true;
+                nw->write_buf_pos += res;
+                return true;
+        } else {
+                return false;
+        }
+}
+
+static bool
+write_player_id(struct fv_network *nw)
+{
+        ssize_t res;
+
+        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
+                                     sizeof nw->write_buf - nw->write_buf_pos,
+                                     FV_PROTO_PLAYER_ID,
+                                     FV_PROTO_TYPE_UINT64,
+                                     nw->player_id,
+                                     FV_PROTO_TYPE_NONE);
+
+        if (res != -1) {
+                nw->sent_hello = true;
+                nw->write_buf_pos += res;
+                return true;
+        } else {
+                return false;
+        }
+}
+
+static void
+fill_write_buf(struct fv_network *nw)
+{
+        if (!nw->sent_hello) {
+                if (nw->has_player_id) {
+                        if (!write_player_id(nw))
+                                return;
+                } else if (!write_new_player(nw))
+                        return;
+        }
+}
+
+static bool
+handle_write(struct fv_network *nw)
+{
+        ssize_t wrote;
+
+        fill_write_buf(nw);
+
+        if (nw->write_buf_pos <= 0)
+                return true;
+
+        wrote = write(nw->sock, nw->write_buf, nw->write_buf_pos);
+
+        if (wrote < 0) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        /* Move any unwritten data to the beginning of the buffer */
+        memmove(nw->write_buf,
+                nw->write_buf + wrote,
+                nw->write_buf_pos - wrote);
+        nw->write_buf_pos -= wrote;
+
+        return true;
 }
 
 static bool
@@ -294,7 +398,7 @@ thread_func(void *user_data)
                 if (nw->sock != -1) {
                         pollfd[1].fd = nw->sock;
                         pollfd[1].events = POLLIN | POLLHUP;
-                        if (!nw->connected)
+                        if (needs_write_poll(nw))
                                 pollfd[1].revents |= POLLOUT;
                         pollfd[1].revents = 0;
                         n_pollfds++;
@@ -328,10 +432,20 @@ thread_func(void *user_data)
                         if ((pollfd[1].revents & POLLOUT))
                                 set_connected(nw);
 
-                        if ((pollfd[1].revents & POLLERR))
+                        if ((pollfd[1].revents & POLLERR)) {
                                 set_socket_error(nw);
-                        else if ((pollfd[1].revents & (POLLIN | POLLHUP)))
-                                handle_server_data(nw);
+                                continue;
+                        }
+
+                        if ((pollfd[1].revents & (POLLIN | POLLHUP))) {
+                                if (!handle_server_data(nw))
+                                        continue;
+                        }
+
+                        if ((pollfd[1].revents & POLLOUT)) {
+                                if (!handle_write(nw))
+                                        continue;
+                        }
                 }
         }
 
@@ -356,6 +470,7 @@ fv_network_new(void)
 
         nw->sock = -1;
         nw->connected = false;
+        nw->has_player_id = false;
         nw->last_connect_time = 0;
         nw->connect_wait_time = 0;
         nw->quit = false;
