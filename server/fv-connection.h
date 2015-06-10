@@ -33,6 +33,7 @@
 #include "fv-main-context.h"
 #include "fv-signal.h"
 #include "fv-proto.h"
+#include "fv-playerbase.h"
 
 enum fv_connection_event_type {
         FV_CONNECTION_EVENT_ERROR,
@@ -64,7 +65,8 @@ struct fv_connection_update_position_event {
 struct fv_connection;
 
 struct fv_connection *
-fv_connection_accept(int server_sock,
+fv_connection_accept(struct fv_playerbase *playerbase,
+                     int server_sock,
                      struct fv_error **error);
 
 void
@@ -78,5 +80,20 @@ fv_connection_get_remote_address_string(struct fv_connection *conn);
 
 const struct fv_netaddress *
 fv_connection_get_remote_address(struct fv_connection *conn);
+
+void
+fv_connection_set_player(struct fv_connection *conn,
+                         struct fv_player *player);
+
+struct fv_player *
+fv_connection_get_player(struct fv_connection *conn);
+
+void
+fv_connection_dirty_player(struct fv_connection *conn,
+                           int player_num,
+                           int state);
+
+void
+fv_connection_dirty_n_players(struct fv_connection *conn);
 
 #endif /* FV_CONNECTION_H */

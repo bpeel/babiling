@@ -161,7 +161,7 @@ listen_socket_source_cb(struct fv_main_context_source *source,
         struct fv_connection *conn;
         struct fv_error *error = NULL;
 
-        conn = fv_connection_accept(fd, &error);
+        conn = fv_connection_accept(nw->playerbase, fd, &error);
 
         if (conn == NULL) {
                 if (error->domain != &fv_file_error ||
