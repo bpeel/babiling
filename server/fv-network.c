@@ -120,6 +120,166 @@ add_client(struct fv_network *nw,
         return client;
 }
 
+static void
+dirty_player(struct fv_network *nw,
+             struct fv_player *player,
+             int state)
+{
+        struct fv_network_client *client;
+
+        fv_list_for_each(client, &nw->clients, link)
+                fv_connection_dirty_player(client->connection,
+                                           player->num,
+                                           state);
+}
+
+static void
+dirty_n_players(struct fv_network *nw)
+{
+        struct fv_network_client *client;
+
+        fv_list_for_each(client, &nw->clients, link)
+                fv_connection_dirty_n_players(client->connection);
+}
+
+static bool
+handle_update_position(struct fv_network *nw,
+                       struct fv_network_client *client,
+                       struct fv_connection_update_position_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        struct fv_player *player = fv_connection_get_player(client->connection);
+
+        if (player == NULL) {
+                fv_log("Client %s sent a position update before a hello "
+                       "message",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        player->x_position = event->x_position;
+        player->y_position = event->y_position;
+        player->direction = event->direction;
+
+        dirty_player(nw, player, FV_PLAYER_STATE_POSITION);
+
+        return true;
+}
+
+static void
+xor_bytes(uint64_t *id,
+          const uint8_t *data,
+          size_t data_length)
+{
+        uint8_t *id_bytes = (uint8_t *) id;
+        int data_pos = 0;
+        int i;
+
+        for (i = 0; i < sizeof (*id); i++) {
+                id_bytes[i] ^= data[data_pos];
+                data_pos = (data_pos + 1) % data_length;
+        }
+}
+
+static uint64_t
+generate_id(const struct fv_netaddress *remote_address)
+{
+        uint16_t random_data;
+        uint64_t id = 0;
+        int i;
+
+        for (i = 0; i < sizeof id / sizeof random_data; i++) {
+                random_data = rand();
+                memcpy((uint8_t *) &id + i * sizeof random_data,
+                       &random_data,
+                       sizeof random_data);
+        }
+
+        /* XOR in the bytes of the client's address so that even if
+         * the client can predict the random number sequence it'll
+         * still be hard to guess a number of another client
+         */
+        xor_bytes(&id,
+                  (uint8_t *) &remote_address->port,
+                  sizeof remote_address->port);
+        if (remote_address->family == AF_INET6)
+                xor_bytes(&id,
+                          (uint8_t *) &remote_address->ipv6,
+                          sizeof remote_address->ipv6);
+        else
+                xor_bytes(&id,
+                          (uint8_t *) &remote_address->ipv4,
+                          sizeof remote_address->ipv4);
+
+        return id;
+}
+
+static bool
+handle_new_player(struct fv_network *nw,
+                  struct fv_network_client *client,
+                  struct fv_connection_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        const struct fv_netaddress *remote_address =
+                fv_connection_get_remote_address(client->connection);
+        struct fv_player *player =
+                fv_connection_get_player(client->connection);
+        uint64_t id;
+
+        if (player != NULL) {
+                fv_log("Client %s multiple hello messages",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        do {
+                id = generate_id(remote_address);
+        } while (fv_playerbase_get_player_by_id(nw->playerbase, id));
+
+        player = fv_playerbase_add_player(nw->playerbase, id);
+
+        fv_connection_set_player(client->connection, player);
+        dirty_player(nw, player, FV_PLAYER_STATE_POSITION);
+        dirty_n_players(nw);
+
+        return true;
+}
+
+static bool
+handle_reconnect(struct fv_network *nw,
+                 struct fv_network_client *client,
+                 struct fv_connection_reconnect_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        struct fv_player *player =
+                fv_connection_get_player(client->connection);
+
+        if (player != NULL) {
+                fv_log("Client %s multiple hello messages",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        player = fv_playerbase_get_player_by_id(nw->playerbase,
+                                                event->player_id);
+
+        /* If the client requested a player that doesn't exist then
+         * divert it to a new player instead.
+         */
+        if (player == NULL)
+                return handle_new_player(nw, client, &event->base);
+
+        fv_connection_set_player(client->connection, player);
+
+        return true;
+}
+
 static bool
 connection_event_cb(struct fv_listener *listener,
                     void *data)
@@ -135,6 +295,19 @@ connection_event_cb(struct fv_listener *listener,
         case FV_CONNECTION_EVENT_ERROR:
                 remove_client(nw, client);
                 return false;
+
+        case FV_CONNECTION_EVENT_UPDATE_POSITION: {
+                struct fv_connection_update_position_event *de = (void *) event;
+                return handle_update_position(nw, client, de);
+        }
+
+        case FV_CONNECTION_EVENT_RECONNECT: {
+                struct fv_connection_reconnect_event *de = (void *) event;
+                return handle_reconnect(nw, client, de);
+        }
+
+        case FV_CONNECTION_EVENT_NEW_PLAYER:
+                return handle_new_player(nw, client, event);
         }
 
         return true;
