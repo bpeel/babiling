@@ -65,6 +65,8 @@ struct fv_network_listen_socket {
 struct fv_network {
         struct fv_list listen_sockets;
 
+        struct fv_playerbase *playerbase;
+
         int n_clients;
         struct fv_list clients;
 };
@@ -212,6 +214,8 @@ fv_network_new(void)
 {
         struct fv_network *nw = fv_alloc(sizeof *nw);
 
+        nw->playerbase = fv_playerbase_new();
+
         fv_list_init(&nw->listen_sockets);
         fv_list_init(&nw->clients);
 
@@ -319,6 +323,8 @@ fv_network_free(struct fv_network *nw)
         free_listen_sockets(nw);
 
         assert(nw->n_clients == 0);
+
+        fv_playerbase_free(nw->playerbase);
 
         free(nw);
 }
