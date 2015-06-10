@@ -249,6 +249,9 @@ handle_player_id(struct fv_network *nw,
                 return false;
         }
 
+        nw->player_id = player_id;
+        nw->has_player_id = true;
+
         return true;
 }
 
