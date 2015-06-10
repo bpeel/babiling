@@ -102,7 +102,7 @@ N_PLAYERS (0x0002)
 • uint16_t n_players
 
 Sent by the server to update the number of players that are currently
-connected.
+connected. This won't include the player of this client.
 
 PLAYER_POSITION (0x0003)
 ------------------------
