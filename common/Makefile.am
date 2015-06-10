@@ -3,6 +3,7 @@ noinst_LIBRARIES = libcommon.a
 libcommon_a_SOURCES = \
 	fv-buffer.c \
 	fv-buffer.h \
+	fv-pointer-array.h \
 	fv-proto.c \
 	fv-proto.h \
 	fv-util.c \
