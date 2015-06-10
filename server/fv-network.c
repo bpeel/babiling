@@ -242,7 +242,9 @@ handle_new_player(struct fv_network *nw,
 
         player = fv_playerbase_add_player(nw->playerbase, id);
 
-        fv_connection_set_player(client->connection, player);
+        fv_connection_set_player(client->connection,
+                                 player,
+                                 false /* from_reconnect */);
         dirty_player(nw, player, FV_PLAYER_STATE_POSITION);
         dirty_n_players(nw);
 
@@ -275,7 +277,9 @@ handle_reconnect(struct fv_network *nw,
         if (player == NULL)
                 return handle_new_player(nw, client, &event->base);
 
-        fv_connection_set_player(client->connection, player);
+        fv_connection_set_player(client->connection,
+                                 player,
+                                 true /* from_reconnect */);
 
         return true;
 }

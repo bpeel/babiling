@@ -83,7 +83,8 @@ fv_connection_get_remote_address(struct fv_connection *conn);
 
 void
 fv_connection_set_player(struct fv_connection *conn,
-                         struct fv_player *player);
+                         struct fv_player *player,
+                         bool from_reconnect);
 
 struct fv_player *
 fv_connection_get_player(struct fv_connection *conn);

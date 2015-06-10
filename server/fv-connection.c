@@ -50,6 +50,7 @@ struct fv_connection {
         struct fv_playerbase *playerbase;
         struct fv_player *player;
 
+        bool sent_player_id;
         bool consistent;
 
         /* Number of players that we last told the client about */
@@ -129,8 +130,13 @@ connection_is_ready_to_write(struct fv_connection *conn)
         if (conn->write_buf_pos > 0)
                 return true;
 
-        if (conn->player && !conn->consistent)
-                return true;
+        if (conn->player) {
+                if (!conn->sent_player_id)
+                        return true;
+
+                if (!conn->consistent)
+                        return true;
+        }
 
         return false;
 }
@@ -199,6 +205,29 @@ write_player_state(struct fv_connection *conn,
         return true;
 }
 
+static bool
+write_player_id(struct fv_connection *conn)
+{
+        ssize_t wrote;
+
+        wrote = fv_proto_write_command(conn->write_buf + conn->write_buf_pos,
+                                       sizeof conn->write_buf -
+                                       conn->write_buf_pos,
+                                       FV_PROTO_PLAYER_ID,
+
+                                       FV_PROTO_TYPE_UINT64,
+                                       conn->player->id,
+
+                                       FV_PROTO_TYPE_NONE);
+        if (wrote == -1)
+                return false;
+
+        conn->write_buf_pos += wrote;
+        conn->sent_player_id = true;
+
+        return true;
+}
+
 static void
 fill_write_buf(struct fv_connection *conn)
 {
@@ -206,7 +235,14 @@ fill_write_buf(struct fv_connection *conn)
         ssize_t wrote;
         int i;
 
-        if (conn->player == NULL || conn->consistent)
+        if (conn->player == NULL)
+                return;
+
+        if (!conn->sent_player_id &&
+            !write_player_id(conn))
+                return;
+
+        if (conn->consistent)
                 return;
 
         n_players = fv_playerbase_get_n_players(conn->playerbase);
@@ -503,6 +539,7 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
         conn->write_buf_pos = 0;
 
         fv_buffer_init(&conn->dirty_players);
+        conn->sent_player_id = false;
         conn->consistent = false;
         conn->n_players = 0;
 
@@ -571,7 +608,8 @@ fv_connection_accept(struct fv_playerbase *playerbase,
 
 void
 fv_connection_set_player(struct fv_connection *conn,
-                         struct fv_player *player)
+                         struct fv_player *player,
+                         bool from_reconnect)
 {
         if (player)
                 player->ref_count++;
@@ -580,6 +618,8 @@ fv_connection_set_player(struct fv_connection *conn,
                 conn->player->ref_count--;
 
         conn->player = player;
+
+        conn->sent_player_id = from_reconnect;
 
         update_poll_flags(conn);
 }
