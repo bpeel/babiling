@@ -327,7 +327,7 @@ handle_reconnect(struct fv_connection *conn,
         }
 
         return emit_event(conn,
-                          FV_CONNECTION_EVENT_UPDATE_POSITION,
+                          FV_CONNECTION_EVENT_RECONNECT,
                           &event.base);
 }
 
