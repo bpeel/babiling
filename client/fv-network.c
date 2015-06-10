@@ -178,13 +178,13 @@ write_new_player(struct fv_network *nw)
 }
 
 static bool
-write_player_id(struct fv_network *nw)
+write_reconnect(struct fv_network *nw)
 {
         ssize_t res;
 
         res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
                                      sizeof nw->write_buf - nw->write_buf_pos,
-                                     FV_PROTO_PLAYER_ID,
+                                     FV_PROTO_RECONNECT,
                                      FV_PROTO_TYPE_UINT64,
                                      nw->player_id,
                                      FV_PROTO_TYPE_NONE);
@@ -203,7 +203,7 @@ fill_write_buf(struct fv_network *nw)
 {
         if (!nw->sent_hello) {
                 if (nw->has_player_id) {
-                        if (!write_player_id(nw))
+                        if (!write_reconnect(nw))
                                 return;
                 } else if (!write_new_player(nw))
                         return;
