@@ -68,7 +68,7 @@ fv_logic_reset(struct fv_logic *logic,
  */
 enum fv_logic_state_change
 fv_logic_update(struct fv_logic *logic,
-                unsigned int ticks);
+                unsigned int progress);
 
 void
 fv_logic_get_player(struct fv_logic *logic,

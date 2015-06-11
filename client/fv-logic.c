@@ -67,8 +67,6 @@ struct fv_logic_npc {
 struct fv_logic {
         enum fv_logic_state state;
 
-        unsigned int last_ticks;
-
         struct fv_logic_player players[FV_LOGIC_MAX_PLAYERS];
         int n_players;
 
@@ -83,7 +81,6 @@ fv_logic_reset(struct fv_logic *logic,
         struct fv_logic_player *player;
         int i;
 
-        logic->last_ticks = 0;
         logic->n_players = n_players;
 
         for (i = 0; i < n_players; i++) {
@@ -313,14 +310,12 @@ update_player_movement(struct fv_logic *logic,
 }
 
 enum fv_logic_state_change
-fv_logic_update(struct fv_logic *logic, unsigned int ticks)
+fv_logic_update(struct fv_logic *logic,
+                unsigned int progress)
 {
-        unsigned int progress = ticks - logic->last_ticks;
         float progress_secs;
         enum fv_logic_state_change state_change = 0;
         int i;
-
-        logic->last_ticks = ticks;
 
         /* If we've skipped over half a second then we'll assume something
          * has gone wrong and we won't do anything */

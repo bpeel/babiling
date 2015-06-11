@@ -97,7 +97,7 @@ struct data {
         bool viewports_dirty;
         int n_viewports;
 
-        unsigned int start_time;
+        unsigned int last_update_time;
 
         enum menu_state menu_state;
         int n_players;
@@ -125,7 +125,7 @@ reset_menu_state(struct data *data)
         int i, j;
 
         data->menu_state = MENU_STATE_CHOOSING_KEYS;
-        data->start_time = SDL_GetTicks();
+        data->last_update_time = SDL_GetTicks();
         data->viewports_dirty = true;
         data->n_viewports = 1;
         data->n_players = 1;
@@ -256,7 +256,7 @@ set_key(struct data *data,
 
                 if (data->next_player >= data->n_players) {
                         data->menu_state = MENU_STATE_PLAYING;
-                        data->start_time = SDL_GetTicks();
+                        data->last_update_time = SDL_GetTicks();
                         fv_logic_reset(data->logic, data->n_players);
                 }
         }
@@ -631,6 +631,7 @@ paint(struct data *data)
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
         struct fv_person player;
         bool player_changed;
+        unsigned int now;
         int w, h;
         int i;
 
@@ -645,8 +646,10 @@ paint(struct data *data)
 
         update_npcs(data);
 
+        now = SDL_GetTicks();
         player_changed =
-                fv_logic_update(data->logic, SDL_GetTicks() - data->start_time);
+                fv_logic_update(data->logic, now - data->last_update_time);
+        data->last_update_time = now;
 
         if (player_changed) {
                 fv_logic_get_player(data->logic,
