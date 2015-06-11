@@ -389,6 +389,23 @@ fv_logic_free(struct fv_logic *logic)
 }
 
 void
+fv_logic_get_player(struct fv_logic *logic,
+                    int player_num,
+                    struct fv_person *person)
+{
+        const struct fv_logic_position *pos =
+                &logic->players[player_num].position;
+        float direction;
+
+        person->x_position = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
+        person->y_position = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
+        direction = pos->current_direction;
+        if (direction < 0)
+                direction += 2 * M_PI;
+        person->direction = direction / (2 * M_PI) * UINT16_MAX;
+}
+
+void
 fv_logic_get_center(struct fv_logic *logic,
                     int player_num,
                     float *x, float *y)

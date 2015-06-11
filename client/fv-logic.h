@@ -58,6 +58,11 @@ fv_logic_update(struct fv_logic *logic,
                 unsigned int ticks);
 
 void
+fv_logic_get_player(struct fv_logic *logic,
+                    int player_num,
+                    struct fv_person *person);
+
+void
 fv_logic_get_center(struct fv_logic *logic,
                     int player_num,
                     float *x, float *y);
