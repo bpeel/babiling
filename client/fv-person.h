@@ -32,4 +32,9 @@ enum fv_person_type {
         FV_PERSON_TYPE_PYJAMAS,
 };
 
+struct fv_person {
+        uint32_t x_position, y_position;
+        uint16_t direction;
+};
+
 #endif /* FV_PERSON_H */
