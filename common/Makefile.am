@@ -1,6 +1,8 @@
 noinst_LIBRARIES = libcommon.a
 
 libcommon_a_SOURCES = \
+	fv-bitmask.c \
+	fv-bitmask.h \
 	fv-buffer.c \
 	fv-buffer.h \
 	fv-pointer-array.h \
