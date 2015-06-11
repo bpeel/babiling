@@ -34,23 +34,26 @@ AC_CHECK_SIZEOF([unsigned long])
 AC_CHECK_LIB([m], sinf)
 AC_CHECK_FUNCS([ffs ffsl])
 
-alignof_name=""
+have_alignof=no
 AC_MSG_CHECKING([for alignof])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([const int thing = alignof (int);],
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <stdalign.h>
+                                    const int thing = alignof (int);],
                                    [(void) 0])],
-                  [alignof_name="alignof"
+                  [have_alignof=yes
+                   AC_DEFINE([HAVE_ALIGNOF], 1,
+                             [Defined if alignof is available])
                    AC_MSG_RESULT([yes])],
                   [AC_MSG_RESULT([no])])
 AC_MSG_CHECKING([for __alignof__])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([const int thing = __alignof__ (int);],
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([const int t = __alignof__ (int);],
                                    [(void) 0])],
-                  [alignof_name="__alignof__"
+                  [have_alignof=yes
+                   AC_DEFINE([HAVE_UUALIGNOF], 1,
+                             [Defined if __alignof__ is available])
                    AC_MSG_RESULT([yes])],
                   [AC_MSG_RESULT([no])])
-AS_IF([test "x$alignof_name" = "x"],
+AS_IF([test "x$have_alignof" = "xno"],
       [AC_MSG_ERROR([No operator for alignof found])])
-AC_DEFINE_UNQUOTED([ALIGNOF_NAME], [$alignof_name],
-                   [The name of the alignof operator])
 
 have_sync_ref_count=yes
 AC_MSG_CHECKING([for __sync_fetch_and_add])

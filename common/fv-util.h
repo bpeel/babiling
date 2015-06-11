@@ -41,7 +41,14 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-#define FV_ALIGNOF(x) ALIGNOF_NAME(x)
+#if defined(HAVE_ALIGNOF)
+#include <stdalign.h>
+#define FV_ALIGNOF(x) alignof(x)
+#elif defined(HAVE_UUALIGNOF)
+#define FV_ALIGNOF(x) __alignof__(x)
+#else
+#error No alignof operator found
+#endif
 
 #define FV_STRUCT_OFFSET(container, member) \
   ((size_t) &((container *) 0)->member)
