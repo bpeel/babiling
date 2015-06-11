@@ -52,6 +52,10 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
                void *user_data);
 
 void
+fv_network_update_player(struct fv_network *nw,
+                         const struct fv_person *player);
+
+void
 fv_network_free(struct fv_network *nw);
 
 #endif /* FV_NETWORK_H */

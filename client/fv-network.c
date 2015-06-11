@@ -46,6 +46,9 @@ struct fv_network {
 
         bool quit;
 
+        bool player_queued;
+        struct fv_person queued_player;
+
         /* This state is only accessed by the network thread so it
          * doesn't need the mutex
          */
@@ -57,6 +60,9 @@ struct fv_network {
         bool sent_hello;
         bool has_player_id;
         uint64_t player_id;
+
+        bool player_dirty;
+        struct fv_person player;
 
         uint8_t read_buf[1024];
         size_t read_buf_pos;
@@ -127,6 +133,7 @@ try_connect(struct fv_network *nw)
 
         nw->connected = false;
         nw->sent_hello = false;
+        nw->player_dirty = true;
         nw->read_buf_pos = 0;
         nw->write_buf_pos = 0;
 
@@ -166,6 +173,9 @@ needs_write_poll(struct fv_network *nw)
                 return true;
 
         if (!nw->sent_hello)
+                return true;
+
+        if (nw->player_dirty)
                 return true;
 
         if (nw->write_buf_pos > 0)
@@ -214,6 +224,35 @@ write_reconnect(struct fv_network *nw)
         }
 }
 
+static bool
+write_player(struct fv_network *nw)
+{
+        ssize_t res;
+
+        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
+                                     sizeof nw->write_buf - nw->write_buf_pos,
+                                     FV_PROTO_UPDATE_POSITION,
+
+                                     FV_PROTO_TYPE_UINT32,
+                                     nw->player.x_position,
+
+                                     FV_PROTO_TYPE_UINT32,
+                                     nw->player.y_position,
+
+                                     FV_PROTO_TYPE_UINT16,
+                                     nw->player.direction,
+
+                                     FV_PROTO_TYPE_NONE);
+
+        if (res != -1) {
+                nw->player_dirty = false;
+                nw->write_buf_pos += res;
+                return true;
+        } else {
+                return false;
+        }
+}
+
 static void
 fill_write_buf(struct fv_network *nw)
 {
@@ -222,6 +261,11 @@ fill_write_buf(struct fv_network *nw)
                         if (!write_reconnect(nw))
                                 return;
                 } else if (!write_new_player(nw))
+                        return;
+        }
+
+        if (nw->player_dirty) {
+                if (!write_player(nw))
                         return;
         }
 }
@@ -425,7 +469,15 @@ thread_func(void *user_data)
 
         while (true) {
                 SDL_LockMutex(nw->mutex);
+
                 quit = nw->quit;
+
+                if (nw->player_queued) {
+                        nw->player_dirty = true;
+                        nw->player_queued = false;
+                        nw->player = nw->queued_player;
+                }
+
                 SDL_UnlockMutex(nw->mutex);
 
                 if (quit)
@@ -520,6 +572,7 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
         nw->last_connect_time = 0;
         nw->connect_wait_time = 0;
         nw->quit = false;
+        nw->player_queued = false;
 
         fv_buffer_init(&nw->players);
         fv_buffer_init(&nw->dirty_players);
@@ -538,6 +591,17 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
                 fv_fatal("Error creating thread: %s", SDL_GetError());
 
         return nw;
+}
+
+void
+fv_network_update_player(struct fv_network *nw,
+                         const struct fv_person *player)
+{
+        SDL_LockMutex(nw->mutex);
+        nw->queued_player = *player;
+        nw->player_queued = true;
+        fv_network_wakeup_thread(nw);
+        SDL_UnlockMutex(nw->mutex);
 }
 
 void
