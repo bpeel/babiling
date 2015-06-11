@@ -637,6 +637,12 @@ paint(struct data *data)
         SDL_GL_SwapWindow(data->window);
 }
 
+static void
+consistent_event_cb(const struct fv_network_consistent_event *event,
+                    void *user_data)
+{
+}
+
 static bool
 check_gl_version(void)
 {
@@ -794,7 +800,7 @@ main(int argc, char **argv)
                 goto out;
         }
 
-        data.nw = fv_network_new();
+        data.nw = fv_network_new(consistent_event_cb, &data);
 
         fv_buffer_init(&data.joysticks);
 

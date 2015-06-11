@@ -20,10 +20,36 @@
 #ifndef FV_NETWORK_H
 #define FV_NETWORK_H
 
+#include <stdint.h>
+
+#include "fv-person.h"
+#include "fv-buffer.h"
+
 struct fv_network;
 
+struct fv_network_consistent_event {
+        int n_players;
+
+        const struct fv_person *players;
+
+        /* fv_bitmask with 1-bit for each player to mark whether it
+         * has changed since the last consistent event
+         */
+        const struct fv_buffer *dirty_players;
+};
+
+/**
+ * This will be invoked whenever the server tells us that enough state
+ * messages have been received to describe a consistent state. Note
+ * that this will be emitted asynchronously from a different thread.
+ */
+typedef void
+(* fv_network_consistent_event_cb)(const struct fv_network_consistent_event *e,
+                                   void *user_data);
+
 struct fv_network *
-fv_network_new(void);
+fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
+               void *user_data);
 
 void
 fv_network_free(struct fv_network *nw);

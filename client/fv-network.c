@@ -32,6 +32,9 @@
 #include "fv-network.h"
 #include "fv-util.h"
 #include "fv-proto.h"
+#include "fv-buffer.h"
+#include "fv-person.h"
+#include "fv-bitmask.h"
 
 struct fv_network {
         SDL_Thread *thread;
@@ -46,6 +49,9 @@ struct fv_network {
         /* This state is only accessed by the network thread so it
          * doesn't need the mutex
          */
+
+        fv_network_consistent_event_cb consistent_event_cb;
+        void *user_data;
 
         bool connected;
         bool sent_hello;
@@ -66,9 +72,19 @@ struct fv_network {
         /* The last time we tried to connect in SDL ticks
          */
         uint32_t last_connect_time;
+
+        /* Array of fv_persons */
+        struct fv_buffer players;
+        /* Array of one bit for each player to mark whether it has
+         * changed since the last consistent state was reached
+         */
+        struct fv_buffer dirty_players;
 };
 
 #define FV_NETWORK_MAX_CONNECT_WAIT_TIME (15 * 1000)
+
+#define FV_NETWORK_N_PLAYERS(nw)                                \
+        ((nw)->players.length / sizeof (struct fv_person))
 
 static void
 set_connected(struct fv_network *nw)
@@ -259,11 +275,23 @@ static bool
 handle_consistent(struct fv_network *nw,
                   const uint8_t *message)
 {
+        struct fv_network_consistent_event event;
+
         if (fv_proto_read_command(message,
                                   FV_PROTO_TYPE_NONE) == -1) {
                 set_socket_error(nw);
                 return false;
         }
+
+        if (nw->consistent_event_cb) {
+                event.n_players = FV_NETWORK_N_PLAYERS(nw);
+                event.players = (const struct fv_person *) nw->players.data;
+                event.dirty_players = &nw->dirty_players;
+
+                nw->consistent_event_cb(&event, nw->user_data);
+        }
+
+        memset(nw->dirty_players.data, 0, nw->dirty_players.length);
 
         return true;
 }
@@ -281,6 +309,10 @@ handle_n_players(struct fv_network *nw,
                 return false;
         }
 
+        fv_buffer_set_length(&nw->players,
+                             sizeof (struct fv_person) * n_players);
+        fv_bitmask_set_length(&nw->dirty_players, n_players);
+
         return true;
 }
 
@@ -288,19 +320,25 @@ static bool
 handle_player_position(struct fv_network *nw,
                        const uint8_t *message)
 {
+        struct fv_person player;
         uint16_t player_num;
-        uint32_t x_position;
-        uint32_t y_position;
-        uint32_t direction;
 
         if (fv_proto_read_command(message,
                                   FV_PROTO_TYPE_UINT16, &player_num,
-                                  FV_PROTO_TYPE_UINT32, &x_position,
-                                  FV_PROTO_TYPE_UINT32, &y_position,
-                                  FV_PROTO_TYPE_UINT16, &direction,
+                                  FV_PROTO_TYPE_UINT32, &player.x_position,
+                                  FV_PROTO_TYPE_UINT32, &player.y_position,
+                                  FV_PROTO_TYPE_UINT16, &player.direction,
                                   FV_PROTO_TYPE_NONE) == -1) {
                 set_socket_error(nw);
                 return false;
+        }
+
+        if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
+                memcpy(nw->players.data +
+                       player_num * sizeof (struct fv_person),
+                       &player,
+                       sizeof player);
+                fv_bitmask_set(&nw->dirty_players, player_num, true);
         }
 
         return true;
@@ -468,9 +506,13 @@ fv_network_wakeup_thread(struct fv_network *nw)
 }
 
 struct fv_network *
-fv_network_new(void)
+fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
+               void *user_data)
 {
         struct fv_network *nw = fv_alloc(sizeof *nw);
+
+        nw->consistent_event_cb = consistent_event_cb;
+        nw->user_data = user_data;
 
         nw->sock = -1;
         nw->connected = false;
@@ -478,6 +520,9 @@ fv_network_new(void)
         nw->last_connect_time = 0;
         nw->connect_wait_time = 0;
         nw->quit = false;
+
+        fv_buffer_init(&nw->players);
+        fv_buffer_init(&nw->dirty_players);
 
         if (pipe(nw->wakeup_pipe) == -1)
                 fv_fatal("Error creating pipe: %s", strerror(errno));
@@ -507,6 +552,9 @@ fv_network_free(struct fv_network *nw)
         SDL_WaitThread(nw->thread, NULL /* status */);
 
         SDL_DestroyMutex(nw->mutex);
+
+        fv_buffer_destroy(&nw->players);
+        fv_buffer_destroy(&nw->dirty_players);
 
         fv_close(nw->wakeup_pipe[0]);
         fv_close(nw->wakeup_pipe[1]);
