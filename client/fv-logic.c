@@ -27,6 +27,7 @@
 #include "fv-logic.h"
 #include "fv-util.h"
 #include "fv-map.h"
+#include "fv-buffer.h"
 
 /* Player movement speed measured in blocks per second */
 #define FV_LOGIC_PLAYER_SPEED 10.0f
@@ -59,6 +60,10 @@ struct fv_logic_player {
         float center_x, center_y;
 };
 
+struct fv_logic_npc {
+        struct fv_logic_position position;
+};
+
 struct fv_logic {
         enum fv_logic_state state;
 
@@ -66,6 +71,9 @@ struct fv_logic {
 
         struct fv_logic_player players[FV_LOGIC_MAX_PLAYERS];
         int n_players;
+
+        /* NPC player state. This state is not reset. Array of fv_logic_npc */
+        struct fv_buffer npcs;
 };
 
 void
@@ -104,6 +112,7 @@ fv_logic_new(void)
 {
         struct fv_logic *logic = fv_alloc(sizeof *logic);
 
+        fv_buffer_init(&logic->npcs);
         fv_logic_reset(logic, 0);
 
         return logic;
@@ -135,6 +144,7 @@ person_blocking(const struct fv_logic *logic,
                 const struct fv_logic_position *this_position,
                 float x, float y)
 {
+        const struct fv_logic_npc *npc;
         int i;
 
         for (i = 0; i < logic->n_players; i++) {
@@ -147,6 +157,19 @@ person_blocking(const struct fv_logic *logic,
                         return true;
         }
 
+        for (i = 0;
+             i < logic->npcs.length / sizeof (struct fv_logic_npc);
+             i++) {
+                npc = (struct fv_logic_npc *) logic->npcs.data + i;
+
+                if (this_position == &npc->position)
+                        continue;
+
+                if (position_in_range(&npc->position,
+                                      x, y,
+                                      FV_LOGIC_PERSON_SIZE / 2.0f))
+                        return true;
+        }
 
         return false;
 }
@@ -304,8 +327,40 @@ fv_logic_set_direction(struct fv_logic *logic,
 }
 
 void
+fv_logic_set_n_npcs(struct fv_logic *logic,
+                    int n_npcs)
+{
+        fv_buffer_set_length(&logic->npcs,
+                             sizeof (struct fv_logic_npc) * n_npcs);
+}
+
+void
+fv_logic_update_npc(struct fv_logic *logic,
+                    int npc_num,
+                    const struct fv_person *person)
+{
+        struct fv_logic_npc *npc;
+        struct fv_logic_position *pos;
+
+        assert(npc_num < logic->npcs.length / sizeof (struct fv_logic_npc));
+
+        npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
+        pos = &npc->position;
+
+        pos->x = person->x_position / (float) UINT32_MAX * FV_MAP_WIDTH;
+        pos->y = person->y_position / (float) UINT32_MAX * FV_MAP_HEIGHT;
+        pos->current_direction = (person->direction / (float) UINT16_MAX *
+                                  2 * M_PI);
+        if (pos->current_direction > M_PI)
+                pos->current_direction -= 2 * M_PI;
+        pos->target_direction = pos->current_direction;
+        pos->speed = 0.0f;
+}
+
+void
 fv_logic_free(struct fv_logic *logic)
 {
+        fv_buffer_destroy(&logic->npcs);
         fv_free(logic);
 }
 
@@ -324,6 +379,7 @@ fv_logic_for_each_person(struct fv_logic *logic,
                          void *user_data)
 {
         const struct fv_logic_player *player;
+        const struct fv_logic_npc *npc;
         struct fv_logic_person person;
         int i;
 
@@ -335,6 +391,20 @@ fv_logic_for_each_person(struct fv_logic *logic,
                 person.x = player->position.x;
                 person.y = player->position.y;
                 person.direction = player->position.current_direction;
+
+                person_cb(&person, user_data);
+        }
+
+        person.type = FV_PERSON_TYPE_PYJAMAS;
+
+        for (i = 0;
+             i < logic->npcs.length / sizeof (struct fv_logic_npc);
+             i++) {
+                npc = (struct fv_logic_npc *) logic->npcs.data + i;
+
+                person.x = npc->position.x;
+                person.y = npc->position.y;
+                person.direction = npc->position.current_direction;
 
                 person_cb(&person, user_data);
         }

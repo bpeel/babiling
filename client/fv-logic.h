@@ -73,6 +73,15 @@ fv_logic_set_direction(struct fv_logic *logic,
                        bool moving,
                        float direction);
 
+void
+fv_logic_set_n_npcs(struct fv_logic *logic,
+                    int n_npcs);
+
+void
+fv_logic_update_npc(struct fv_logic *logic,
+                    int npc_num,
+                    const struct fv_person *person);
+
 int
 fv_logic_get_n_players(struct fv_logic *logic);
 
