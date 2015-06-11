@@ -108,6 +108,10 @@ struct data {
 
         struct player players[FV_LOGIC_MAX_PLAYERS];
 
+        bool redraw_queued;
+        /* Event that is sent asynchronously to queue a redraw */
+        Uint32 redraw_user_event;
+
         /* This is a cache of the NPC state that is updated
          * asynchronously. It is copied into the fv_logic just before
          * updating it. It is always accessed with the mutex locked.
@@ -131,6 +135,7 @@ reset_menu_state(struct data *data)
         data->n_players = 1;
         data->next_player = 0;
         data->next_key = 0;
+        data->redraw_queued = true;
 
         for (i = 0; i < FV_LOGIC_MAX_PLAYERS; i++) {
                 for (j = 0; j < N_KEYS; j++) {
@@ -159,6 +164,7 @@ toggle_fullscreen(struct data *data)
         SDL_SetWindowDisplayMode(data->window, &mode);
 
         data->is_fullscreen = !data->is_fullscreen;
+        data->redraw_queued = true;
 
         SDL_SetWindowFullscreen(data->window, data->is_fullscreen);
 }
@@ -249,6 +255,7 @@ set_key(struct data *data,
 {
         data->players[data->next_player].keys[data->next_key] = *other_key;
         data->next_key++;
+        data->redraw_queued = true;
 
         if (data->next_key >= N_KEYS) {
                 data->next_player++;
@@ -276,6 +283,8 @@ set_key_state(struct data *data,
         data->players[player_num].keys[key].down = state;
 
         update_direction(data, player_num);
+
+        data->redraw_queued = true;
 }
 
 static void
@@ -449,36 +458,47 @@ handle_event(struct data *data,
                 case SDL_WINDOWEVENT_CLOSE:
                         data->quit = true;
                         break;
+                case SDL_WINDOWEVENT_EXPOSED:
+                        data->redraw_queued = true;
+                        break;
                 }
-                break;
+                goto handled;
 
         case SDL_KEYDOWN:
         case SDL_KEYUP:
                 handle_key_event(data, &event->key);
-                break;
+                goto handled;
 
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
                 handle_mouse_button(data, &event->button);
-                break;
+                goto handled;
 
         case SDL_JOYBUTTONDOWN:
         case SDL_JOYBUTTONUP:
                 handle_joystick_button(data, &event->jbutton);
-                break;
+                goto handled;
 
         case SDL_JOYDEVICEADDED:
                 handle_joystick_added(data, &event->jdevice);
-                break;
+                goto handled;
 
         case SDL_JOYDEVICEREMOVED:
                 handle_joystick_removed(data, &event->jdevice);
-                break;
+                goto handled;
 
         case SDL_QUIT:
                 data->quit = true;
-                break;
+                goto handled;
         }
+
+        if (event->type == data->redraw_user_event) {
+                data->redraw_queued = true;
+                goto handled;
+        }
+
+handled:
+        (void) 0;
 }
 
 static void
@@ -630,7 +650,7 @@ paint(struct data *data)
 {
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
         struct fv_person player;
-        bool player_changed;
+        enum fv_logic_state_change state_change;
         unsigned int now;
         int w, h;
         int i;
@@ -647,11 +667,11 @@ paint(struct data *data)
         update_npcs(data);
 
         now = SDL_GetTicks();
-        player_changed =
-                fv_logic_update(data->logic, now - data->last_update_time);
+        state_change = fv_logic_update(data->logic,
+                                       now - data->last_update_time);
         data->last_update_time = now;
 
-        if (player_changed) {
+        if ((state_change & FV_LOGIC_STATE_CHANGE_PLAYER)) {
                 fv_logic_get_player(data->logic,
                                     0 /* player_num */,
                                     &player);
@@ -686,6 +706,13 @@ paint(struct data *data)
         paint_hud(data, w, h);
 
         SDL_GL_SwapWindow(data->window);
+
+        /* If the logic hasn't become stable then we'll queue another
+         * redraw immediately so that we'll continue updating the
+         * logic.
+         */
+        if (state_change == 0)
+                data->redraw_queued = false;
 }
 
 static void
@@ -693,6 +720,7 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
                     void *user_data)
 {
         struct data *data = user_data;
+        SDL_Event redraw_event = { .type = data->redraw_user_event };
         int player_num;
 
         SDL_LockMutex(data->npcs_mutex);
@@ -708,6 +736,8 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
                        &event->players[player_num],
                        sizeof (struct fv_person));
         }
+
+        SDL_PushEvent(&redraw_event);
 
         SDL_UnlockMutex(data->npcs_mutex);
 }
@@ -852,6 +882,7 @@ main(int argc, char **argv)
         struct data data;
         SDL_Event event;
         Uint32 flags;
+        bool had_event;
         int res;
         int ret;
 
@@ -868,6 +899,9 @@ main(int argc, char **argv)
                 ret = EXIT_FAILURE;
                 goto out;
         }
+
+        data.redraw_user_event = SDL_RegisterEvents(1);
+        data.redraw_queued = true;
 
         data.npcs_mutex = SDL_CreateMutex();
         if (data.npcs_mutex == NULL) {
@@ -966,11 +1000,17 @@ main(int argc, char **argv)
         reset_menu_state(&data);
 
         while (!data.quit) {
-                if (SDL_PollEvent(&event))
-                        handle_event(&data, &event);
-                else
-                        paint(&data);
+                if (data.redraw_queued) {
+                        had_event = SDL_PollEvent(&event);
+                } else {
+                        had_event = SDL_WaitEvent(&event);
+                        data.last_update_time = SDL_GetTicks();
+                }
 
+                if (had_event)
+                        handle_event(&data, &event);
+                else if (data.redraw_queued)
+                        paint(&data);
         }
 
         fv_logic_free(data.logic);
