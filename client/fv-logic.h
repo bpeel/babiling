@@ -50,7 +50,10 @@ void
 fv_logic_reset(struct fv_logic *logic,
                int n_players);
 
-void
+/* Update the state according to the time passed in
+ * milliseconds. Returns whether any of the players has changed state.
+ */
+bool
 fv_logic_update(struct fv_logic *logic,
                 unsigned int ticks);
 

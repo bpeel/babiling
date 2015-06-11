@@ -174,7 +174,7 @@ person_blocking(const struct fv_logic *logic,
         return false;
 }
 
-static void
+static bool
 update_position_direction(struct fv_logic *logic,
                           struct fv_logic_position *position,
                           float progress_secs)
@@ -182,7 +182,7 @@ update_position_direction(struct fv_logic *logic,
         float diff, turned;
 
         if (position->target_direction == position->current_direction)
-                return;
+                return false;
 
         diff = position->target_direction - position->current_direction;
 
@@ -200,13 +200,16 @@ update_position_direction(struct fv_logic *logic,
                 position->current_direction -= turned;
         else
                 position->current_direction += turned;
+
+        return true;
 }
 
-static void
+static bool
 update_position_xy(struct fv_logic *logic,
                    struct fv_logic_position *position,
                    float progress_secs)
 {
+        bool ret = false;
         float distance;
         float diff;
         float pos;
@@ -227,8 +230,10 @@ update_position_xy(struct fv_logic *logic,
                      floorf(position->y + FV_LOGIC_PERSON_SIZE / 2.0f)) &&
             !is_wall(floorf(pos),
                      floorf(position->y - FV_LOGIC_PERSON_SIZE / 2.0f)) &&
-            !person_blocking(logic, position, pos, position->y))
+            !person_blocking(logic, position, pos, position->y)) {
                 position->x += diff;
+                ret = true;
+        }
 
         diff = distance * sinf(position->target_direction);
 
@@ -241,20 +246,30 @@ update_position_xy(struct fv_logic *logic,
                      floorf(pos)) &&
             !is_wall(floorf(position->x - FV_LOGIC_PERSON_SIZE / 2.0f),
                      floorf(pos)) &&
-            !person_blocking(logic, position, position->x, pos))
+            !person_blocking(logic, position, position->x, pos)) {
                 position->y += diff;
+                ret = true;
+        }
+
+        return ret;
 }
 
-static void
+static bool
 update_position(struct fv_logic *logic,
                 struct fv_logic_position *position,
                 float progress_secs)
 {
-        if (position->speed == 0.0f)
-                return;
+        bool position_changed, direction_changed;
 
-        update_position_xy(logic, position, progress_secs);
-        update_position_direction(logic, position, progress_secs);
+        if (position->speed == 0.0f)
+                return false;
+
+        position_changed =
+                update_position_xy(logic, position, progress_secs);
+        direction_changed =
+                update_position_direction(logic, position, progress_secs);
+
+        return position_changed || direction_changed;
 }
 
 static void
@@ -273,23 +288,28 @@ update_center(struct fv_logic_player *player)
         }
 }
 
-static void
+static bool
 update_player_movement(struct fv_logic *logic,
                        struct fv_logic_player *player,
                        float progress_secs)
 {
-        if (!player->position.speed)
-                return;
+        bool ret;
 
-        update_position(logic, &player->position, progress_secs);
+        if (!player->position.speed)
+                return false;
+
+        ret = update_position(logic, &player->position, progress_secs);
         update_center(player);
+
+        return ret;
 }
 
-void
+bool
 fv_logic_update(struct fv_logic *logic, unsigned int ticks)
 {
         unsigned int progress = ticks - logic->last_ticks;
         float progress_secs;
+        bool ret = false;
         int i;
 
         logic->last_ticks = ticks;
@@ -297,17 +317,21 @@ fv_logic_update(struct fv_logic *logic, unsigned int ticks)
         /* If we've skipped over half a second then we'll assume something
          * has gone wrong and we won't do anything */
         if (progress >= 500 || progress < 0)
-                return;
+                return false;
 
         if (logic->state != FV_LOGIC_STATE_RUNNING)
-                return;
+                return false;
 
         progress_secs = progress / 1000.0f;
 
-        for (i = 0; i < logic->n_players; i++)
-                update_player_movement(logic,
-                                       logic->players + i,
-                                       progress_secs);
+        for (i = 0; i < logic->n_players; i++) {
+                if (update_player_movement(logic,
+                                           logic->players + i,
+                                           progress_secs))
+                        ret = true;
+        }
+
+        return ret;
 }
 
 void
