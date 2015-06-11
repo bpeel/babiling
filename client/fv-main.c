@@ -37,6 +37,7 @@
 #include "fv-map.h"
 #include "fv-error-message.h"
 #include "fv-network.h"
+#include "fv-bitmask.h"
 
 #define MIN_GL_MAJOR_VERSION 2
 #define MIN_GL_MINOR_VERSION 0
@@ -106,6 +107,16 @@ struct data {
         struct fv_buffer joysticks;
 
         struct player players[FV_LOGIC_MAX_PLAYERS];
+
+        /* This is a cache of the NPC state that is updated
+         * asynchronously. It is copied into the fv_logic just before
+         * updating it. It is always accessed with the mutex locked.
+         */
+        SDL_mutex *npcs_mutex;
+        /* Array of fv_person */
+        struct fv_buffer npcs;
+        /* Bitmask with a bit for each npc */
+        struct fv_buffer dirty_npcs;
 };
 
 static void
@@ -590,6 +601,31 @@ need_clear(struct data *data)
 }
 
 static void
+update_npcs(struct data *data)
+{
+        const struct fv_person *npcs;
+        int npc_num;
+
+        SDL_LockMutex(data->npcs_mutex);
+
+        npcs = (const struct fv_person *) data->npcs.data;
+
+        fv_logic_set_n_npcs(data->logic,
+                            data->npcs.length /
+                            sizeof (struct fv_person));
+
+        fv_bitmask_for_each(&data->dirty_npcs, npc_num) {
+                fv_logic_update_npc(data->logic,
+                                    npc_num,
+                                    npcs + npc_num);
+        }
+
+        memset(data->dirty_npcs.data, 0, data->dirty_npcs.length);
+
+        SDL_UnlockMutex(data->npcs_mutex);
+}
+
+static void
 paint(struct data *data)
 {
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
@@ -604,6 +640,8 @@ paint(struct data *data)
                 data->last_fb_height = h;
                 data->viewports_dirty = true;
         }
+
+        update_npcs(data);
 
         fv_logic_update(data->logic, SDL_GetTicks() - data->start_time);
 
@@ -641,6 +679,24 @@ static void
 consistent_event_cb(const struct fv_network_consistent_event *event,
                     void *user_data)
 {
+        struct data *data = user_data;
+        int player_num;
+
+        SDL_LockMutex(data->npcs_mutex);
+
+        fv_buffer_set_length(&data->npcs,
+                             sizeof (struct fv_person) * event->n_players);
+        fv_bitmask_set_length(&data->dirty_npcs, event->n_players);
+        fv_bitmask_or(&data->dirty_npcs, event->dirty_players);
+
+        fv_bitmask_for_each(event->dirty_players, player_num) {
+                memcpy(data->npcs.data +
+                       player_num * sizeof (struct fv_person),
+                       &event->players[player_num],
+                       sizeof (struct fv_person));
+        }
+
+        SDL_UnlockMutex(data->npcs_mutex);
 }
 
 static bool
@@ -800,6 +856,16 @@ main(int argc, char **argv)
                 goto out;
         }
 
+        data.npcs_mutex = SDL_CreateMutex();
+        if (data.npcs_mutex == NULL) {
+                fv_error_message("Failed to create mutex");
+                ret = EXIT_FAILURE;
+                goto out_sdl;
+        }
+
+        fv_buffer_init(&data.npcs);
+        fv_buffer_init(&data.dirty_npcs);
+
         data.nw = fv_network_new(consistent_event_cb, &data);
 
         fv_buffer_init(&data.joysticks);
@@ -908,7 +974,11 @@ main(int argc, char **argv)
         SDL_DestroyWindow(data.window);
  out_network:
         fv_network_free(data.nw);
+        fv_buffer_destroy(&data.npcs);
+        fv_buffer_destroy(&data.dirty_npcs);
+        SDL_DestroyMutex(data.npcs_mutex);
         close_joysticks(&data);
+ out_sdl:
         SDL_Quit();
  out:
         return ret;
