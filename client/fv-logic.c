@@ -254,25 +254,31 @@ update_position_xy(struct fv_logic *logic,
         return ret;
 }
 
-static bool
+static enum fv_logic_state_change
 update_position(struct fv_logic *logic,
                 struct fv_logic_position *position,
                 float progress_secs)
 {
         bool position_changed, direction_changed;
+        enum fv_logic_state_change state_change = 0;
 
         if (position->speed == 0.0f)
-                return false;
+                return 0;
+
+        state_change |= FV_LOGIC_STATE_CHANGE_ALIVE;
 
         position_changed =
                 update_position_xy(logic, position, progress_secs);
         direction_changed =
                 update_position_direction(logic, position, progress_secs);
 
-        return position_changed || direction_changed;
+        if (position_changed || direction_changed)
+                state_change |= FV_LOGIC_STATE_CHANGE_PLAYER;
+
+        return state_change;
 }
 
-static void
+static enum fv_logic_state_change
 update_center(struct fv_logic_player *player)
 {
         float dx = player->position.x - player->center_x;
@@ -285,31 +291,33 @@ update_center(struct fv_logic_player *player)
                 d = sqrtf(d2);
                 player->center_x += dx * (1 - FV_LOGIC_CAMERA_DISTANCE / d);
                 player->center_y += dy * (1 - FV_LOGIC_CAMERA_DISTANCE / d);
+
+                return FV_LOGIC_STATE_CHANGE_CENTER;
+        } else {
+                return 0;
         }
 }
 
-static bool
+static enum fv_logic_state_change
 update_player_movement(struct fv_logic *logic,
                        struct fv_logic_player *player,
                        float progress_secs)
 {
-        bool ret;
-
         if (!player->position.speed)
                 return false;
 
-        ret = update_position(logic, &player->position, progress_secs);
-        update_center(player);
-
-        return ret;
+        return (update_position(logic,
+                                &player->position,
+                                progress_secs) |
+                update_center(player));
 }
 
-bool
+enum fv_logic_state_change
 fv_logic_update(struct fv_logic *logic, unsigned int ticks)
 {
         unsigned int progress = ticks - logic->last_ticks;
         float progress_secs;
-        bool ret = false;
+        enum fv_logic_state_change state_change = 0;
         int i;
 
         logic->last_ticks = ticks;
@@ -317,21 +325,23 @@ fv_logic_update(struct fv_logic *logic, unsigned int ticks)
         /* If we've skipped over half a second then we'll assume something
          * has gone wrong and we won't do anything */
         if (progress >= 500 || progress < 0)
-                return false;
+                return FV_LOGIC_STATE_CHANGE_ALIVE;
 
         if (logic->state != FV_LOGIC_STATE_RUNNING)
-                return false;
+                return 0;
 
         progress_secs = progress / 1000.0f;
 
         for (i = 0; i < logic->n_players; i++) {
-                if (update_player_movement(logic,
-                                           logic->players + i,
-                                           progress_secs))
-                        ret = true;
+                state_change |= update_player_movement(logic,
+                                                       logic->players + i,
+                                                       progress_secs);
         }
 
-        return ret;
+        if (state_change)
+                state_change |= FV_LOGIC_STATE_CHANGE_ALIVE;
+
+        return state_change;
 }
 
 void

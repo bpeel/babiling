@@ -31,6 +31,19 @@ enum fv_logic_state {
         FV_LOGIC_STATE_RUNNING,
 };
 
+enum fv_logic_state_change {
+        /* The player position or direction has changed. Ie, something
+         * that should be sent over the network.
+         */
+        FV_LOGIC_STATE_CHANGE_PLAYER = 1 << 0,
+        /* The player's center has changed. This only affects rendering. */
+        FV_LOGIC_STATE_CHANGE_CENTER = 1 << 1,
+        /* There is something happening that might cause another state
+         * change even if this time it didn't.
+         */
+        FV_LOGIC_STATE_CHANGE_ALIVE = 1 << 2
+};
+
 #define FV_LOGIC_MAX_PLAYERS 4
 
 struct fv_logic_person {
@@ -53,7 +66,7 @@ fv_logic_reset(struct fv_logic *logic,
 /* Update the state according to the time passed in
  * milliseconds. Returns whether any of the players has changed state.
  */
-bool
+enum fv_logic_state_change
 fv_logic_update(struct fv_logic *logic,
                 unsigned int ticks);
 
