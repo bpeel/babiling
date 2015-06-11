@@ -126,6 +126,9 @@ AS_CASE(
 # strip leading spaces
 FINVENKISTO_EXTRA_CFLAGS="$FINVENKISTO_EXTRA_CFLAGS ${MAINTAINER_CFLAGS#*  }"
 
+AS_COMPILER_FLAG([-std=c99],
+         [FINVENKISTO_EXTRA_CFLAGS="-std=c99 $FINVENKISTO_EXTRA_CFLAGS"])
+
 AS_CASE([$host_os],
         [mingw*],
         [GL_CFLAGS=""],
