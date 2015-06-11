@@ -629,6 +629,8 @@ static void
 paint(struct data *data)
 {
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
+        struct fv_person player;
+        bool player_changed;
         int w, h;
         int i;
 
@@ -643,7 +645,15 @@ paint(struct data *data)
 
         update_npcs(data);
 
-        fv_logic_update(data->logic, SDL_GetTicks() - data->start_time);
+        player_changed =
+                fv_logic_update(data->logic, SDL_GetTicks() - data->start_time);
+
+        if (player_changed) {
+                fv_logic_get_player(data->logic,
+                                    0 /* player_num */,
+                                    &player);
+                fv_network_update_player(data->nw, &player);
+        }
 
         update_viewports(data);
         update_centers(data);
