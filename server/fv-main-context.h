@@ -103,6 +103,7 @@ fv_main_context_remove_source(struct fv_main_context_source *source);
 void
 fv_main_context_poll(struct fv_main_context *mc);
 
+/* Returns the number of microseconds since some epoch */
 uint64_t
 fv_main_context_get_monotonic_clock(struct fv_main_context *mc);
 
