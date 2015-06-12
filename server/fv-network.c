@@ -69,6 +69,8 @@ struct fv_network {
 
         int n_clients;
         struct fv_list clients;
+
+        struct fv_listener dirty_listener;
 };
 
 FV_SLICE_ALLOCATOR(struct fv_network_client,
@@ -140,6 +142,24 @@ dirty_n_players(struct fv_network *nw)
 
         fv_list_for_each(client, &nw->clients, link)
                 fv_connection_dirty_n_players(client->connection);
+}
+
+static bool
+dirty_cb(struct fv_listener *listener,
+         void *data)
+{
+        struct fv_playerbase_dirty_event *event = data;
+        struct fv_network *nw = fv_container_of(listener,
+                                                struct fv_network,
+                                                dirty_listener);
+
+        if (event->n_players_changed)
+                dirty_n_players(nw);
+
+        if (event->dirty_state)
+                dirty_player(nw, event->player, event->dirty_state);
+
+        return true;
 }
 
 static bool
@@ -392,6 +412,9 @@ fv_network_new(void)
         struct fv_network *nw = fv_alloc(sizeof *nw);
 
         nw->playerbase = fv_playerbase_new();
+        nw->dirty_listener.notify = dirty_cb;
+        fv_signal_add(fv_playerbase_get_dirty_signal(nw->playerbase),
+                      &nw->dirty_listener);
 
         fv_list_init(&nw->listen_sockets);
         fv_list_init(&nw->clients);
