@@ -102,8 +102,6 @@ fv_playerbase_free(struct fv_playerbase *playerbase)
 {
         int i;
 
-        /* FIXME: This should probably use a hash table or something */
-
         for (i = 0; i < fv_pointer_array_length(&playerbase->players); i++)
                 fv_player_free(fv_pointer_array_get(&playerbase->players, i));
 
