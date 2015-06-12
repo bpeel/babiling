@@ -44,4 +44,7 @@ fv_pointer_array_append(struct fv_buffer *buf,
 #define fv_pointer_array_set(buf, index, pointer)       \
         ((((void **) (buf)->data))[index] = (pointer))
 
+#define fv_pointer_array_set_length(buf, length) \
+        fv_buffer_set_length((buf), (length) * sizeof (void *))
+
 #endif /* FV_POINTER_ARRAY_H */
