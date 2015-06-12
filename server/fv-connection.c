@@ -40,6 +40,7 @@
 #include "fv-log.h"
 #include "fv-file-error.h"
 #include "fv-socket.h"
+#include "fv-main-context.h"
 
 struct fv_connection {
         struct fv_netaddress remote_address;
@@ -66,6 +67,11 @@ struct fv_connection {
         size_t write_buf_pos;
 
         struct fv_signal event_signal;
+
+        /* Last monotonic clock time when data was received on this
+         * connection. This is used for garbage collection.
+         */
+        uint64_t last_update_time;
 };
 
 static bool
@@ -383,6 +389,12 @@ process_commands(struct fv_connection *conn)
         uint16_t payload_length;
         uint8_t *data = conn->read_buf;
         size_t length = conn->read_buf_pos;
+        uint64_t now = fv_main_context_get_monotonic_clock(NULL);
+
+        conn->last_update_time = now;
+
+        if (conn->player)
+                conn->player->last_update_time = now;
 
         while (true) {
                 if (length < FV_PROTO_HEADER_SIZE)
@@ -542,6 +554,7 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
         conn->sent_player_id = false;
         conn->consistent = false;
         conn->n_players = 0;
+        conn->last_update_time = fv_main_context_get_monotonic_clock(NULL);
 
         n_players = fv_playerbase_get_n_players(playerbase);
         fv_buffer_set_length(&conn->dirty_players, n_players);
@@ -642,6 +655,12 @@ fv_connection_dirty_player(struct fv_connection *conn,
         conn->consistent = false;
 
         update_poll_flags(conn);
+}
+
+uint64_t
+fv_connection_get_last_update_time(struct fv_connection *conn)
+{
+        return conn->last_update_time;
 }
 
 void

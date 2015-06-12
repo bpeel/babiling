@@ -81,6 +81,9 @@ fv_connection_get_remote_address_string(struct fv_connection *conn);
 const struct fv_netaddress *
 fv_connection_get_remote_address(struct fv_connection *conn);
 
+uint64_t
+fv_connection_get_last_update_time(struct fv_connection *conn);
+
 void
 fv_connection_set_player(struct fv_connection *conn,
                          struct fv_player *player,
