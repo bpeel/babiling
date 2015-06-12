@@ -648,8 +648,14 @@ fv_connection_dirty_player(struct fv_connection *conn,
                            int player_num,
                            int state)
 {
-        if (conn->dirty_players.length <= player_num)
+        int old_length = conn->dirty_players.length;
+
+        if (old_length <= player_num) {
                 fv_buffer_set_length(&conn->dirty_players, player_num + 1);
+                memset(conn->dirty_players.data + old_length,
+                       0,
+                       player_num + 1 - old_length);
+        }
 
         conn->dirty_players.data[player_num] |= state;
         conn->consistent = false;
