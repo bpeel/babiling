@@ -28,6 +28,7 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <string.h>
+#include <assert.h>
 
 #include "fv-network.h"
 #include "fv-util.h"
@@ -85,12 +86,21 @@ struct fv_network {
          * changed since the last consistent state was reached
          */
         struct fv_buffer dirty_players;
+
+        /* The last time we sent any data to the server. This is used
+         * to track when we need to send a keep alive event.
+         */
+        uint32_t last_update_time;
 };
 
 #define FV_NETWORK_MAX_CONNECT_WAIT_TIME (15 * 1000)
 
 #define FV_NETWORK_N_PLAYERS(nw)                                \
         ((nw)->players.length / sizeof (struct fv_person))
+
+/* Time in milliseconds after which if no other data is sent the
+ * client will send a KEEP_ALIVE message */
+#define FV_NETWORK_KEEP_ALIVE_TIME (60 * 1000)
 
 static void
 set_connected(struct fv_network *nw)
@@ -136,6 +146,7 @@ try_connect(struct fv_network *nw)
         nw->player_dirty = true;
         nw->read_buf_pos = 0;
         nw->write_buf_pos = 0;
+        nw->last_update_time = SDL_GetTicks();
 
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1)
@@ -179,6 +190,9 @@ needs_write_poll(struct fv_network *nw)
                 return true;
 
         if (nw->write_buf_pos > 0)
+                return true;
+
+        if (nw->last_update_time + FV_NETWORK_KEEP_ALIVE_TIME <= SDL_GetTicks())
                 return true;
 
         return false;
@@ -253,6 +267,27 @@ write_player(struct fv_network *nw)
         }
 }
 
+static bool
+write_keep_alive(struct fv_network *nw)
+{
+        ssize_t res;
+
+        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
+                                     sizeof nw->write_buf - nw->write_buf_pos,
+                                     FV_PROTO_KEEP_ALIVE,
+
+                                     FV_PROTO_TYPE_NONE);
+
+        /* This should always succeed because it'll only be attempted
+         * if the write buffer is empty.
+         */
+        assert(res > 0);
+
+        nw->write_buf_pos += res;
+
+        return true;
+}
+
 static void
 fill_write_buf(struct fv_network *nw)
 {
@@ -266,6 +301,17 @@ fill_write_buf(struct fv_network *nw)
 
         if (nw->player_dirty) {
                 if (!write_player(nw))
+                        return;
+        }
+
+        /* If nothing else writes and we haven't written for a while
+         * then add a keep alive. This should be the last thing in
+         * this function.
+         */
+        if (nw->write_buf_pos == 0 &&
+            nw->last_update_time + FV_NETWORK_KEEP_ALIVE_TIME <=
+            SDL_GetTicks()) {
+                if (!write_keep_alive(nw))
                         return;
         }
 }
@@ -286,6 +332,8 @@ handle_write(struct fv_network *nw)
                 set_socket_error(nw);
                 return false;
         }
+
+        nw->last_update_time = SDL_GetTicks();
 
         /* Move any unwritten data to the beginning of the buffer */
         memmove(nw->write_buf,
@@ -456,6 +504,18 @@ handle_server_data(struct fv_network *nw)
         return true;
 }
 
+static void
+set_timeout_for(int *timeout,
+                uint32_t next_wakeup_time)
+{
+        uint32_t now = SDL_GetTicks();
+
+        if (now >= next_wakeup_time)
+                *timeout = 0;
+        else
+                *timeout = next_wakeup_time - now + 1;
+}
+
 static int
 thread_func(void *user_data)
 {
@@ -464,7 +524,7 @@ thread_func(void *user_data)
         struct pollfd pollfd[2];
         nfds_t n_pollfds;
         char wakeup_buf[8];
-        uint32_t now, next_connect_time;
+        uint32_t now;
         int timeout;
 
         while (true) {
@@ -498,13 +558,13 @@ thread_func(void *user_data)
                 }
 
                 if (nw->sock == -1) {
-                        now = SDL_GetTicks();
-                        next_connect_time = (nw->last_connect_time +
-                                             nw->connect_wait_time);
-                        if (now >= next_connect_time)
-                                timeout = 0;
-                        else
-                                timeout = next_connect_time - now + 1;
+                        set_timeout_for(&timeout,
+                                        nw->last_connect_time +
+                                        nw->connect_wait_time);
+                } else if ((pollfd[1].events & POLLOUT) == 0) {
+                        set_timeout_for(&timeout,
+                                        FV_NETWORK_KEEP_ALIVE_TIME +
+                                        nw->last_update_time);
                 } else {
                         timeout = -1;
                 }

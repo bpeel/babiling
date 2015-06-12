@@ -71,6 +71,15 @@ UPDATE_POSITION (0x1002)
 
 Sent by the client whenever the player has moved.
 
+KEEP_ALIVE (0x1003)
+-------------------
+
+• No payload
+
+Some data must be sent by the client at least every minute or the
+server will close the connection. If nothing else needs to be sent the
+client can send this empty message. No response is sent.
+
 Messages to the client
 ======================
 
