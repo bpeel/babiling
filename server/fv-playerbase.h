@@ -31,8 +31,11 @@
 
 struct fv_playerbase_dirty_event {
         struct fv_playerbase *playerbase;
-        struct fv_player *player;
+
         int dirty_state;
+        struct fv_player *player;
+
+        bool n_players_changed;
 };
 
 struct fv_playerbase *
