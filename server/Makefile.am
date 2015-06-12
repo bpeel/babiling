@@ -21,8 +21,6 @@ finvenkisto_server_SOURCES = \
 	fv-log.h \
 	fv-main-context.c \
 	fv-main-context.h \
-	fv-netaddress.c \
-	fv-netaddress.h \
 	fv-network.c \
 	fv-network.h \
 	fv-player.c \
