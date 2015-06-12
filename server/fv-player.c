@@ -25,6 +25,7 @@
 
 #include "fv-player.h"
 #include "fv-slice.h"
+#include "fv-main-context.h"
 
 FV_SLICE_ALLOCATOR(struct fv_player,
                    fv_player_allocator);
@@ -36,6 +37,7 @@ fv_player_new(uint64_t id)
 
         player->id = id;
         player->ref_count = 0;
+        player->last_update_time = fv_main_context_get_monotonic_clock(NULL);
 
         return player;
 }

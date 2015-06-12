@@ -45,6 +45,12 @@ struct fv_player {
         /* FV_PLAYER_STATE_POSITION */
         uint32_t x_position, y_position;
         uint16_t direction;
+
+        /* The last time a connection that is using this player sent
+         * some data. If this gets too old it will be a candidate for
+         * garbage collection.
+         */
+        uint64_t last_update_time;
 };
 
 #define FV_PLAYER_STATE_POSITION (1 << 0)
