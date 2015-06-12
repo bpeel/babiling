@@ -71,12 +71,19 @@ struct fv_network {
         struct fv_list clients;
 
         struct fv_listener dirty_listener;
+
+        struct fv_main_context_source *gc_source;
 };
 
 FV_SLICE_ALLOCATOR(struct fv_network_client,
                    fv_network_client_allocator);
 
 #define FV_NETWORK_MAX_CLIENTS 1024
+
+/* Number of microseconds of inactivity before a client will be
+ * considered for garbage collection.
+ */
+#define FV_NETWORK_MAX_CLIENT_AGE ((uint64_t) 2 * 60 * 1000000)
 
 static void
 update_all_listen_socket_sources(struct fv_network *nw);
@@ -406,6 +413,29 @@ update_all_listen_socket_sources(struct fv_network *nw)
                 update_listen_socket_source(nw, listen_socket);
 }
 
+static void
+gc_cb(struct fv_main_context_source *source,
+      void *user_data)
+{
+        struct fv_network *nw = user_data;
+        struct fv_network_client *client, *tmp;
+        struct fv_connection *conn;
+        uint64_t now = fv_main_context_get_monotonic_clock(NULL);
+        uint64_t last_update_time;
+
+        fv_list_for_each_safe(client, tmp, &nw->clients, link) {
+                conn = client->connection;
+                last_update_time = fv_connection_get_last_update_time(conn);
+                if (now - last_update_time >= FV_NETWORK_MAX_CLIENT_AGE) {
+                        fv_log("Removing connection from %s which has been "
+                               "idle for %i seconds",
+                               fv_connection_get_remote_address_string(conn),
+                               (int) ((now - last_update_time) / 1000000));
+                        remove_client(nw, client);
+                }
+        }
+}
+
 struct fv_network *
 fv_network_new(void)
 {
@@ -420,6 +450,11 @@ fv_network_new(void)
         fv_list_init(&nw->clients);
 
         nw->n_clients = 0;
+
+        nw->gc_source = fv_main_context_add_timer(NULL,
+                                                  1, /* minutes */
+                                                  gc_cb,
+                                                  nw);
 
         return nw;
 }
@@ -525,6 +560,8 @@ fv_network_free(struct fv_network *nw)
         assert(nw->n_clients == 0);
 
         fv_playerbase_free(nw->playerbase);
+
+        fv_main_context_remove_source(nw->gc_source);
 
         free(nw);
 }
