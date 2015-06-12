@@ -650,6 +650,12 @@ fv_connection_dirty_player(struct fv_connection *conn,
 {
         int old_length = conn->dirty_players.length;
 
+        /* We don't send any information about the player that the
+         * connection is controlling.
+         */
+        if (conn->player && conn->player->num == player_num)
+                return;
+
         if (old_length <= player_num) {
                 fv_buffer_set_length(&conn->dirty_players, player_num + 1);
                 memset(conn->dirty_players.data + old_length,
