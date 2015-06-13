@@ -787,12 +787,12 @@ check_gl_version(void)
 static void
 show_help(void)
 {
-        printf("Finvenkisto - Instruludo por venigi la finan venkon\n"
-               "uzo: finvenkisto [opcioj]\n"
-               "Opcioj:\n"
-               " -h       Montru ĉi tiun helpmesaĝon\n"
-               " -f       Rulu la ludon en fenestro\n"
-               " -p       Rulu la ludon plenekrane (defaŭlto)\n");
+        printf("Finvenkisto - Virtual Language Exchange\n"
+               "usage: finvenkisto [options]\n"
+               "Options:\n"
+               " -h       Show this help messae\n"
+               " -w       Run in a window\n"
+               " -f       Run fullscreen (default)\n");
 }
 
 static bool
@@ -805,16 +805,16 @@ process_argument_flags(struct data *data,
                         show_help();
                         return false;
 
-                case 'f':
+                case 'w':
                         data->is_fullscreen = false;
                         break;
 
-                case 'p':
+                case 'f':
                         data->is_fullscreen = true;
                         break;
 
                 default:
-                        fprintf(stderr, "Neatendita opcio ‘%c’\n", *flags);
+                        fprintf(stderr, "Unknown option ‘%c’\n", *flags);
                         show_help();
                         return false;
                 }
@@ -836,7 +836,7 @@ process_arguments(struct data *data,
                         if (!process_argument_flags(data, argv[i] + 1))
                                 return false;
                 } else {
-                        fprintf(stderr, "Neatendita argumento ‘%s’\n", argv[i]);
+                        fprintf(stderr, "Unexpected argument ‘%s’\n", argv[i]);
                         show_help();
                         return false;
                 }
