@@ -914,6 +914,7 @@ main(int argc, char **argv)
         fv_buffer_init(&data.dirty_npcs);
 
         data.nw = fv_network_new(consistent_event_cb, &data);
+        fv_network_add_host(data.nw, "localhost");
 
         fv_buffer_init(&data.joysticks);
 

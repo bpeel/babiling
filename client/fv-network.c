@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <assert.h>
+#include <netdb.h>
 
 #include "fv-network.h"
 #include "fv-util.h"
@@ -36,6 +37,23 @@
 #include "fv-buffer.h"
 #include "fv-person.h"
 #include "fv-bitmask.h"
+#include "fv-netaddress.h"
+#include "fv-list.h"
+
+struct fv_network_host {
+        struct fv_list link;
+        bool resolved;
+};
+
+struct fv_network_host_unresolved {
+        struct fv_network_host base;
+        char name[1];
+};
+
+struct fv_network_host_resolved {
+        struct fv_network_host base;
+        struct fv_netaddress address;
+};
 
 struct fv_network {
         SDL_Thread *thread;
@@ -49,6 +67,11 @@ struct fv_network {
 
         bool player_queued;
         struct fv_person queued_player;
+
+        /* List of fv_network_hosts. This can be added to while the
+         * thread is running as long as the mutex is held.
+         */
+        struct fv_list queued_hosts;
 
         /* This state is only accessed by the network thread so it
          * doesn't need the mutex
@@ -70,6 +93,14 @@ struct fv_network {
 
         uint8_t write_buf[1024];
         size_t write_buf_pos;
+
+        /* List of hosts to try connecting to. These will be a mix of
+         * fv_network_host_resolved and _unresolved. Once a host is
+         * successfully resolved it gets replaced with one or more
+         * fv_network_host_resolveds. */
+        struct fv_list hosts;
+        /* The next address that we will attempt to connect to. */
+        struct fv_network_host *next_host;
 
         /* Current number of milliseconds to wait before trying to
          * connect. Doubles after each unsucessful connection up to a
@@ -112,13 +143,27 @@ set_connected(struct fv_network *nw)
 static void
 set_connect_error(struct fv_network *nw)
 {
-        if (nw->connect_wait_time == 0) {
-                nw->connect_wait_time = 1000;
-        } else {
-                nw->connect_wait_time *= 2;
-                if (nw->connect_wait_time > FV_NETWORK_MAX_CONNECT_WAIT_TIME) {
-                        nw->connect_wait_time =
-                                FV_NETWORK_MAX_CONNECT_WAIT_TIME;
+        nw->next_host = fv_container_of(nw->next_host->link.next,
+                                        struct fv_network_host,
+                                        link);
+
+        /* If we've tried all of the addresses then wait a while
+         * before trying again from the beginning.
+         */
+        if (&nw->next_host->link == &nw->hosts) {
+                nw->next_host = fv_container_of(nw->hosts.next,
+                                                struct fv_network_host,
+                                                link);
+
+                if (nw->connect_wait_time == 0) {
+                        nw->connect_wait_time = 1000;
+                } else {
+                        nw->connect_wait_time *= 2;
+                        if (nw->connect_wait_time >
+                            FV_NETWORK_MAX_CONNECT_WAIT_TIME) {
+                                nw->connect_wait_time =
+                                        FV_NETWORK_MAX_CONNECT_WAIT_TIME;
+                        }
                 }
         }
 }
@@ -133,10 +178,119 @@ set_socket_error(struct fv_network *nw)
                 set_connect_error(nw);
 }
 
+static bool
+resolve_next_host(struct fv_network *nw)
+{
+        struct fv_network_host_unresolved *host =
+                (struct fv_network_host_unresolved *) nw->next_host;
+        struct fv_list *prev;
+        const char *addr_end;
+        char *port_end;
+        struct fv_network_host_resolved *resolved_host;
+        struct fv_netaddress addr;
+        unsigned long port;
+        struct addrinfo *ai, *aip;
+        struct sockaddr_in *sockaddr_in;
+        struct sockaddr_in6 *sockaddr_in6;
+        char *name;
+        int res;
+
+        if (fv_netaddress_from_string(&addr, host->name,
+                                      FV_PROTO_DEFAULT_PORT)) {
+                resolved_host = fv_alloc(sizeof *resolved_host);
+                resolved_host->base.resolved = true;
+                resolved_host->address = addr;
+
+                fv_list_insert(&host->base.link, &resolved_host->base.link);
+
+                goto found;
+        }
+
+        addr_end = strchr(host->name, ':');
+
+        if (addr_end) {
+                errno = 0;
+                port = strtoul(addr_end + 1, &port_end, 10);
+                if (errno || port >= 0xffff ||
+                    port_end == addr_end + 1 || *port_end)
+                        return false;
+        } else {
+                addr_end = host->name + strlen(host->name);
+                port = FV_PROTO_DEFAULT_PORT;
+        }
+
+        name = fv_alloc(addr_end - host->name + 1);
+        memcpy(name, host->name, addr_end - host->name);
+        name[addr_end - host->name] = '\0';
+
+        res = getaddrinfo(name,
+                          NULL, /* service */
+                          NULL, /* hints */
+                          &ai);
+
+        fv_free(name);
+
+        if (res)
+                return false;
+
+        prev = &host->base.link;
+
+        for (aip = ai; aip; aip = aip->ai_next) {
+                if (aip->ai_protocol != SOCK_STREAM &&
+                    aip->ai_protocol != 0)
+                        continue;
+
+                switch (aip->ai_family) {
+                case AF_INET:
+                        if (aip->ai_addrlen != sizeof (struct sockaddr_in))
+                                continue;
+                        sockaddr_in = (struct sockaddr_in *) aip->ai_addr;
+                        resolved_host = fv_alloc(sizeof *resolved_host);
+                        resolved_host->address.ipv4 =
+                                sockaddr_in->sin_addr;
+                        break;
+
+                case AF_INET6:
+                        if (aip->ai_addrlen != sizeof (struct sockaddr_in6))
+                                continue;
+                        sockaddr_in6 = (struct sockaddr_in6 *) aip->ai_addr;
+                        resolved_host = fv_alloc(sizeof *resolved_host);
+                        resolved_host->address.ipv6 =
+                                sockaddr_in6->sin6_addr;
+                        break;
+                default:
+                        continue;
+                }
+
+                resolved_host->address.family = aip->ai_family;
+                resolved_host->address.port = port;
+                resolved_host->base.resolved = true;
+                fv_list_insert(prev, &resolved_host->base.link);
+
+                prev = &resolved_host->base.link;
+        }
+
+        freeaddrinfo(ai);
+
+        if (prev == &host->base.link)
+                return false;
+
+found:
+        nw->next_host = fv_container_of(host->base.link.next,
+                                        struct fv_network_host,
+                                        link);
+
+        fv_list_remove(&host->base.link);
+        fv_free(host);
+
+        return true;
+}
+
 static void
 try_connect(struct fv_network *nw)
 {
-        struct sockaddr_in addr;
+        struct fv_network_host_resolved *host;
+        struct fv_netaddress_native addr;
         int sock;
         int ret;
         int flags;
@@ -148,7 +302,15 @@ try_connect(struct fv_network *nw)
         nw->write_buf_pos = 0;
         nw->last_update_time = SDL_GetTicks();
 
-        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (!nw->next_host->resolved &&
+            !resolve_next_host(nw))
+                goto error;
+
+        host = (struct fv_network_host_resolved *) nw->next_host;
+
+        fv_netaddress_to_native(&host->address, &addr);
+
+        sock = socket(addr.sockaddr.sa_family, SOCK_STREAM, 0);
         if (sock == -1)
                 goto error;
 
@@ -156,11 +318,7 @@ try_connect(struct fv_network *nw)
         if (flags == -1 || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1)
                 goto error_socket;
 
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = htons(FV_PROTO_DEFAULT_PORT);
-
-        ret = connect(sock, (struct sockaddr *) &addr, sizeof addr);
+        ret = connect(sock, &addr.sockaddr, addr.length);
         if (ret == -1 && errno != EINPROGRESS)
                 goto error_socket;
 
@@ -516,6 +674,19 @@ set_timeout_for(int *timeout,
                 *timeout = next_wakeup_time - now + 1;
 }
 
+static uint32_t
+connect_wait_time(struct fv_network *nw)
+{
+        /* When we're connecting to the first server in the list we
+         * may wait for a certain pause. The length of the pause
+         * doubles each time we get back to the start of the list.
+         */
+        if (nw->next_host->link.next == &nw->hosts)
+                return nw->connect_wait_time;
+        else
+                return 0;
+}
+
 static int
 thread_func(void *user_data)
 {
@@ -538,6 +709,17 @@ thread_func(void *user_data)
                         nw->player = nw->queued_player;
                 }
 
+                if (!fv_list_empty(&nw->queued_hosts)) {
+                        fv_list_insert_list(nw->hosts.prev, &nw->queued_hosts);
+                        fv_list_init(&nw->queued_hosts);
+                        if (nw->next_host == NULL) {
+                                nw->next_host =
+                                        fv_container_of(nw->hosts.next,
+                                                        struct fv_network_host,
+                                                        link);
+                        }
+                }
+
                 SDL_UnlockMutex(nw->mutex);
 
                 if (quit)
@@ -557,16 +739,18 @@ thread_func(void *user_data)
                         n_pollfds++;
                 }
 
+                timeout = -1;
+
                 if (nw->sock == -1) {
-                        set_timeout_for(&timeout,
-                                        nw->last_connect_time +
-                                        nw->connect_wait_time);
+                        if (nw->next_host) {
+                                set_timeout_for(&timeout,
+                                                nw->last_connect_time +
+                                                connect_wait_time(nw));
+                        }
                 } else if ((pollfd[1].events & POLLOUT) == 0) {
                         set_timeout_for(&timeout,
                                         FV_NETWORK_KEEP_ALIVE_TIME +
                                         nw->last_update_time);
-                } else {
-                        timeout = -1;
                 }
 
                 poll(pollfd, n_pollfds, timeout);
@@ -575,11 +759,13 @@ thread_func(void *user_data)
                         read(nw->wakeup_pipe[0], wakeup_buf, sizeof wakeup_buf);
 
                 if (nw->sock == -1) {
-                        now = SDL_GetTicks();
-                        if (now - nw->last_connect_time >=
-                            nw->connect_wait_time) {
-                                nw->last_connect_time = now;
-                                try_connect(nw);
+                        if (nw->next_host) {
+                                now = SDL_GetTicks();
+                                if (now - nw->last_connect_time >=
+                                    connect_wait_time(nw)) {
+                                        nw->last_connect_time = now;
+                                        try_connect(nw);
+                                }
                         }
                 } else {
                         if ((pollfd[1].revents & (POLLOUT | POLLERR)) ==
@@ -617,6 +803,17 @@ fv_network_wakeup_thread(struct fv_network *nw)
         } while (ret == -1 && errno == EINTR);
 }
 
+static void
+free_hosts(struct fv_list *hosts)
+{
+        struct fv_network_host *host, *tmp;
+
+        fv_list_for_each_safe(host, tmp, hosts, link)
+                fv_free(host);
+
+        fv_list_init(hosts);
+}
+
 struct fv_network *
 fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
                void *user_data)
@@ -628,12 +825,15 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
 
         nw->sock = -1;
         nw->connected = false;
+        nw->next_host = NULL;
         nw->has_player_id = false;
         nw->last_connect_time = 0;
         nw->connect_wait_time = 0;
         nw->quit = false;
         nw->player_queued = false;
 
+        fv_list_init(&nw->queued_hosts);
+        fv_list_init(&nw->hosts);
         fv_buffer_init(&nw->players);
         fv_buffer_init(&nw->dirty_players);
 
@@ -665,6 +865,25 @@ fv_network_update_player(struct fv_network *nw,
 }
 
 void
+fv_network_add_host(struct fv_network *nw,
+                    const char *name)
+{
+        struct fv_network_host_unresolved *host;
+
+        host = fv_alloc(sizeof *host + strlen(name));
+        host->base.resolved = false;
+        strcpy(host->name, name);
+
+        SDL_LockMutex(nw->mutex);
+
+        fv_list_insert(nw->queued_hosts.prev, &host->base.link);
+
+        fv_network_wakeup_thread(nw);
+
+        SDL_UnlockMutex(nw->mutex);
+}
+
+void
 fv_network_free(struct fv_network *nw)
 {
         SDL_LockMutex(nw->mutex);
@@ -679,6 +898,8 @@ fv_network_free(struct fv_network *nw)
 
         fv_buffer_destroy(&nw->players);
         fv_buffer_destroy(&nw->dirty_players);
+        free_hosts(&nw->queued_hosts);
+        free_hosts(&nw->hosts);
 
         fv_close(nw->wakeup_pipe[0]);
         fv_close(nw->wakeup_pipe[1]);
