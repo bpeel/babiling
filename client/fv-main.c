@@ -38,6 +38,7 @@
 #include "fv-error-message.h"
 #include "fv-network.h"
 #include "fv-bitmask.h"
+#include "fv-pointer-array.h"
 
 #define MIN_GL_MAJOR_VERSION 2
 #define MIN_GL_MINOR_VERSION 0
@@ -81,6 +82,12 @@ enum menu_state {
 };
 
 struct data {
+        /* Pointer array of server addresses to try connecting to.
+         * These are const strings that point into argv and so are not
+         * freed.
+         */
+        struct fv_buffer server_addresses;
+
         struct fv_shader_data shader_data;
         struct fv_game *game;
         struct fv_logic *logic;
@@ -795,15 +802,19 @@ show_help(void)
                " -f       Run fullscreen (default)\n");
 }
 
-static bool
+static int
 process_argument_flags(struct data *data,
-                       const char *flags)
+                       const char *flags,
+                       int remaining_argc,
+                       char **remaining_argv)
 {
+        int args_used = 0;
+
         while (*flags) {
                 switch (*flags) {
                 case 'h':
                         show_help();
-                        return false;
+                        return -1;
 
                 case 'w':
                         data->is_fullscreen = false;
@@ -813,28 +824,48 @@ process_argument_flags(struct data *data,
                         data->is_fullscreen = true;
                         break;
 
+                case 's':
+                        if (remaining_argc <= 0) {
+                                fprintf(stderr,
+                                        "Option -s requires an argument\n");
+                                show_help();
+                                return -1;
+                        }
+                        fv_pointer_array_append(&data->server_addresses,
+                                                remaining_argv[0]);
+                        remaining_argv++;
+                        remaining_argc--;
+                        args_used++;
+                        break;
+
                 default:
                         fprintf(stderr, "Unknown option ‘%c’\n", *flags);
                         show_help();
-                        return false;
+                        return -1;
                 }
 
                 flags++;
         }
 
-        return true;
+        return args_used;
 }
 
 static bool
 process_arguments(struct data *data,
                   int argc, char **argv)
 {
+        int args_used;
         int i;
 
         for (i = 1; i < argc; i++) {
                 if (argv[i][0] == '-') {
-                        if (!process_argument_flags(data, argv[i] + 1))
+                        args_used = process_argument_flags(data,
+                                                           argv[i] + 1,
+                                                           argc - i - 1,
+                                                           argv + i + 1);
+                        if (args_used == -1)
                                 return false;
+                        i += args_used;
                 } else {
                         fprintf(stderr, "Unexpected argument ‘%s’\n", argv[i]);
                         show_help();
@@ -876,6 +907,23 @@ create_gl_context(SDL_Window *window)
         return SDL_GL_CreateContext(window);
 }
 
+static void
+add_server_addresses(struct data *data)
+{
+        const char *host;
+        int i;
+
+        if (data->server_addresses.length == 0) {
+                fv_network_add_host(data->nw, "localhost");
+                return;
+        }
+
+        for (i = 0; i < fv_pointer_array_length(&data->server_addresses); i++) {
+                host = fv_pointer_array_get(&data->server_addresses, i);
+                fv_network_add_host(data->nw, host);
+        }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -886,18 +934,20 @@ main(int argc, char **argv)
         int res;
         int ret;
 
+        fv_buffer_init(&data.server_addresses);
+
         data.is_fullscreen = true;
 
         if (!process_arguments(&data, argc, argv)) {
                 ret = EXIT_FAILURE;
-                goto out;
+                goto out_addresses;
         }
 
         res = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
         if (res < 0) {
                 fv_error_message("Unable to init SDL: %s\n", SDL_GetError());
                 ret = EXIT_FAILURE;
-                goto out;
+                goto out_addresses;
         }
 
         data.redraw_user_event = SDL_RegisterEvents(1);
@@ -914,7 +964,8 @@ main(int argc, char **argv)
         fv_buffer_init(&data.dirty_npcs);
 
         data.nw = fv_network_new(consistent_event_cb, &data);
-        fv_network_add_host(data.nw, "localhost");
+
+        add_server_addresses(&data);
 
         fv_buffer_init(&data.joysticks);
 
@@ -1034,6 +1085,7 @@ main(int argc, char **argv)
         close_joysticks(&data);
  out_sdl:
         SDL_Quit();
- out:
+ out_addresses:
+        fv_buffer_destroy(&data.server_addresses);
         return ret;
 }
