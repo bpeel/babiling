@@ -5,6 +5,8 @@ libcommon_a_SOURCES = \
 	fv-bitmask.h \
 	fv-buffer.c \
 	fv-buffer.h \
+	fv-list.c \
+	fv-list.h \
 	fv-netaddress.c \
 	fv-netaddress.h \
 	fv-pointer-array.h \

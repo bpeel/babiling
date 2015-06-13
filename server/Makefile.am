@@ -15,8 +15,6 @@ finvenkisto_server_SOURCES = \
 	fv-error.h \
 	fv-file-error.c \
 	fv-file-error.h \
-	fv-list.c \
-	fv-list.h \
 	fv-log.c \
 	fv-log.h \
 	fv-main-context.c \
