@@ -33,6 +33,22 @@
  * converted to an integer. Eg, 2.1 would be 21.
  */
 
+#ifdef EMSCRIPTEN
+#define FV_GL_ALT_VERSION(desktop, emscripten) \
+        emscripten
+#define FV_GL_ALT_EXT(desktop, emscripten) \
+        emscripten
+#define FV_GL_ALT_SUFFIX(desktop, emscripten) \
+        emscripten
+#else
+#define FV_GL_ALT_VERSION(desktop, emscripten) \
+        desktop
+#define FV_GL_ALT_EXT(desktop, emscripten) \
+        desktop
+#define FV_GL_ALT_SUFFIX(desktop, emscripten) \
+        desktop
+#endif
+
 /* Core functions that we can't do without */
 FV_GL_BEGIN_GROUP(00,
                   NULL,
@@ -77,9 +93,8 @@ FV_GL_FUNC(void,
 FV_GL_FUNC(void,
            glDrawArrays, (GLenum mode, GLint first, GLsizei count))
 FV_GL_FUNC(void,
-           glDrawRangeElements, (GLenum mode, GLuint start,
-                                 GLuint end, GLsizei count, GLenum type,
-                                 const GLvoid *indices))
+           glDrawElements, (GLenum mode, GLsizei count, GLenum type,
+                            const GLvoid *indices))
 FV_GL_FUNC(void,
            glEnable, (GLenum cap))
 FV_GL_FUNC(void,
@@ -116,19 +131,11 @@ FV_GL_FUNC(void,
                           GLint border, GLenum format, GLenum type,
                           const GLvoid *pixels))
 FV_GL_FUNC(void,
-           glTexImage3D, (GLenum target, GLint level,
-                          GLint internalFormat,
-                          GLsizei width, GLsizei height,
-                          GLsizei depth, GLint border,
-                          GLenum format, GLenum type,
-                          const GLvoid *pixels ))
-FV_GL_FUNC(void,
-           glTexSubImage3D, (GLenum target, GLint level,
+           glTexSubImage2D, (GLenum target, GLint level,
                              GLint xoffset, GLint yoffset,
-                             GLint zoffset, GLsizei width,
-                             GLsizei height, GLsizei depth,
-                             GLenum format,
-                             GLenum type, const GLvoid *pixels))
+                             GLsizei width, GLsizei height,
+                             GLenum format, GLenum type,
+                             const GLvoid *pixel))
 FV_GL_FUNC(void,
            glTexParameteri, (GLenum target, GLenum pname, GLint param))
 FV_GL_FUNC(void,
@@ -150,9 +157,9 @@ FV_GL_FUNC(void,
 FV_GL_END_GROUP()
 
 /* Map buffer range */
-FV_GL_BEGIN_GROUP(30,
-                  "GL_ARB_map_buffer_range",
-                  "")
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(30, -1),
+                  FV_GL_ALT_EXT("GL_ARB_map_buffer_range", NULL),
+                  FV_GL_ALT_SUFFIX("", NULL))
 FV_GL_FUNC(void,
            glFlushMappedBufferRange, (GLenum target, GLintptr offset,
                                       GLsizei length))
@@ -164,9 +171,10 @@ FV_GL_FUNC(GLboolean,
 FV_GL_END_GROUP()
 
 /* Vertex array objects */
-FV_GL_BEGIN_GROUP(30,
-                  "GL_ARB_vertex_array_object",
-                  "")
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(30, -1),
+                  FV_GL_ALT_EXT("GL_ARB_vertex_array_object",
+                                "GL_OES_vertex_array_object"),
+                  FV_GL_ALT_SUFFIX("", "OES"))
 FV_GL_FUNC(void,
            glBindVertexArray, (GLuint array))
 FV_GL_FUNC(void,
@@ -175,9 +183,10 @@ FV_GL_FUNC(void,
            glGenVertexArrays, (GLsizei n, GLuint *arrays))
 FV_GL_END_GROUP()
 
-FV_GL_BEGIN_GROUP(31,
-                  "GL_ARB_draw_instanced",
-                  "ARB")
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(31, -1),
+                  FV_GL_ALT_EXT("GL_ARB_draw_instanced",
+                                "GL_ANGLE_instanced_arrays"),
+                  FV_GL_ALT_SUFFIX("ARB", "ANGLE"))
 FV_GL_FUNC(void,
            glDrawElementsInstanced, (GLenum mode, GLsizei count, GLenum type,
                                      const void *indices,
@@ -185,17 +194,52 @@ FV_GL_FUNC(void,
 FV_GL_END_GROUP()
 
 /* FBOs. This is only used for generating mipmaps */
-FV_GL_BEGIN_GROUP(30,
-                  "GL_ARB_framebuffer_object",
-                  "")
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(30, 0),
+                  FV_GL_ALT_EXT("GL_ARB_framebuffer_object", NULL),
+                  FV_GL_ALT_SUFFIX("", NULL))
 FV_GL_FUNC(void,
            glGenerateMipmap, (GLenum target))
 FV_GL_END_GROUP()
 
 /* Instanced arrays */
-FV_GL_BEGIN_GROUP(33,
-                  "GL_ARB_instanced_arrays",
-                  "ARB")
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(33, -1),
+                  FV_GL_ALT_EXT("GL_ARB_instanced_arrays",
+                                "GL_ANGLE_instanced_arrays"),
+                  FV_GL_ALT_SUFFIX("ARB", "ANGLE"))
 FV_GL_FUNC(void,
            glVertexAttribDivisor, (GLuint index, GLuint divisor))
 FV_GL_END_GROUP()
+
+/* 3D textures (used for 2D array textures) */
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(00, -1),
+                  NULL,
+                  NULL)
+FV_GL_FUNC(void,
+           glTexImage3D, (GLenum target, GLint level,
+                          GLint internalFormat,
+                          GLsizei width, GLsizei height,
+                          GLsizei depth, GLint border,
+                          GLenum format, GLenum type,
+                          const GLvoid *pixels ))
+FV_GL_FUNC(void,
+           glTexSubImage3D, (GLenum target, GLint level,
+                             GLint xoffset, GLint yoffset,
+                             GLint zoffset, GLsizei width,
+                             GLsizei height, GLsizei depth,
+                             GLenum format,
+                             GLenum type, const GLvoid *pixels))
+FV_GL_END_GROUP()
+
+/* Draw range elements is not available in GLES 2 */
+FV_GL_BEGIN_GROUP(FV_GL_ALT_VERSION(00, -1),
+                  NULL,
+                  NULL)
+FV_GL_FUNC(void,
+           glDrawRangeElements, (GLenum mode, GLuint start,
+                                 GLuint end, GLsizei count, GLenum type,
+                                 const GLvoid *indices))
+FV_GL_END_GROUP()
+
+#undef FV_GL_ALT_VERSION
+#undef FV_GL_ALT_EXT
+#undef FV_GL_ALT_SUFFIX

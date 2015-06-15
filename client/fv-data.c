@@ -33,11 +33,14 @@
 char *
 fv_data_get_filename(const char *name)
 {
+#ifdef EMSCRIPTEN
+        return fv_strdup(name);
+#else
         char *data_path = SDL_GetBasePath();
         char *full_path;
 
         if (data_path == NULL)
-                NULL;
+                return NULL;
 
         full_path = fv_strconcat(data_path,
                                  FV_DATA_SEPARATOR "data"
@@ -48,4 +51,5 @@ fv_data_get_filename(const char *name)
         SDL_free(data_path);
 
         return full_path;
+#endif /* EMSCRIPTEN */
 }

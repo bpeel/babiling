@@ -1,6 +1,12 @@
 SUBDIRS = data rply
 
-bin_PROGRAMS = finvenkisto
+bin_PROGRAMS =
+
+if IS_EMSCRIPTEN
+bin_PROGRAMS += finvenkisto.html
+else
+bin_PROGRAMS += finvenkisto
+endif
 
 AM_CFLAGS = \
 	$(GL_CFLAGS) \
@@ -9,7 +15,7 @@ AM_CFLAGS = \
 	-I$(srcdir)/../common \
 	$(NULL)
 
-finvenkisto_SOURCES = \
+sources = \
 	fv-array-object.c \
 	fv-array-object.h \
 	fv-data.c \
@@ -58,14 +64,28 @@ BUILT_SOURCES = \
 fv-map.c : fv-map.png make-map.py
 	$(AM_V_GEN)python3 $(srcdir)/make-map.py $(srcdir)/fv-map.png > $@
 
-finvenkisto_LDADD = \
+ldadd = \
 	$(SDL_LIBS) \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	rply/librply.a \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)
 
+finvenkisto_SOURCES = $(sources)
+finvenkisto_LDADD = $(ldadd)
+
+finvenkisto_html_SOURCES = $(sources)
+finvenkisto_html_LDFLAGS = \
+	--pre-js $(srcdir)/configure-emscripten.js \
+	--pre-js $(builddir)/data/finvenkisto-data.js \
+	--shell-file $(srcdir)/finvenkisto-shell.html \
+	$(NULL)
+finvenkisto_html_LDADD = \
+	$(ldadd) \
+	$(NULL)
+
 EXTRA_DIST = \
+	configure-emscripten.js \
 	fv-map.png \
 	make-map.py \
 	$(NULL)

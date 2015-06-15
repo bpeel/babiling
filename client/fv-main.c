@@ -40,10 +40,26 @@
 #include "fv-bitmask.h"
 #include "fv-pointer-array.h"
 
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+/* On Emscripten you have to request 2.0 to get a 2.0 ES context but
+ * the version is reports in GL_VERSION is 1.0 because that is the
+ * WebGL version.
+ */
+#define MIN_GL_MAJOR_VERSION 1
+#define MIN_GL_MINOR_VERSION 0
+#define REQUEST_GL_MAJOR_VERSION 2
+#define REQUEST_GL_MINOR_VERSION 0
+#define FV_GL_PROFILE SDL_GL_CONTEXT_PROFILE_ES
+#else
 #define MIN_GL_MAJOR_VERSION 2
 #define MIN_GL_MINOR_VERSION 0
+#define REQUEST_GL_MAJOR_VERSION MIN_GL_MAJOR_VERSION
+#define REQUEST_GL_MINOR_VERSION MIN_GL_MINOR_VERSION
 #define CORE_GL_MAJOR_VERSION 3
 #define CORE_GL_MINOR_VERSION 1
+#define FV_GL_PROFILE SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+#endif
 
 enum key_code {
         KEY_CODE_UP,
@@ -154,6 +170,7 @@ reset_menu_state(struct data *data)
         fv_logic_reset(data->logic, 0);
 }
 
+#ifndef EMSCRIPTEN
 static void
 toggle_fullscreen(struct data *data)
 {
@@ -175,6 +192,7 @@ toggle_fullscreen(struct data *data)
 
         SDL_SetWindowFullscreen(data->window, data->is_fullscreen);
 }
+#endif /* EMSCRIPTEN */
 
 static void
 update_direction(struct data *data,
@@ -369,10 +387,12 @@ handle_key_event(struct data *data,
                 }
                 break;
 
+#ifndef EMSCRIPTEN
         case SDLK_F11:
                 if (event->state == SDL_PRESSED)
                         toggle_fullscreen(data);
                 break;
+#endif
 
         default:
                 handle_other_key(data, event);
@@ -879,6 +899,7 @@ process_arguments(struct data *data,
 static SDL_GLContext
 create_gl_context(SDL_Window *window)
 {
+#ifndef EMSCRIPTEN
         SDL_GLContext context;
 
         /* First try creating a core context because if we get one it
@@ -895,14 +916,15 @@ create_gl_context(SDL_Window *window)
 
         if (context != NULL)
                 return context;
+#endif /* EMSCRIPTEN */
 
         /* Otherwise try a compatibility profile context */
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,
-                            MIN_GL_MAJOR_VERSION);
+                            REQUEST_GL_MAJOR_VERSION);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,
-                            MIN_GL_MINOR_VERSION);
+                            REQUEST_GL_MINOR_VERSION);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-                            SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+                            FV_GL_PROFILE);
 
         return SDL_GL_CreateContext(window);
 }
@@ -924,19 +946,56 @@ add_server_addresses(struct data *data)
         }
 }
 
+#ifdef EMSCRIPTEN
+static void
+emscripten_loop_cb(void *user_data)
+{
+        struct data *data = user_data;
+        SDL_Event event;
+
+        while (SDL_PollEvent(&event))
+                handle_event(data, &event);
+
+        paint(data);
+}
+#endif /* EMSCRIPTEN */
+
+static void
+run_main_loop(struct data *data)
+{
+        SDL_Event event;
+        bool had_event;
+
+        while (!data->quit) {
+                if (data->redraw_queued) {
+                        had_event = SDL_PollEvent(&event);
+                } else {
+                        had_event = SDL_WaitEvent(&event);
+                        data->last_update_time = SDL_GetTicks();
+                }
+
+                if (had_event)
+                        handle_event(data, &event);
+                else if (data->redraw_queued)
+                        paint(data);
+        }
+}
+
 int
 main(int argc, char **argv)
 {
         struct data data;
-        SDL_Event event;
         Uint32 flags;
-        bool had_event;
         int res;
-        int ret;
+        int ret = EXIT_SUCCESS;
 
         fv_buffer_init(&data.server_addresses);
 
+#ifdef EMSCRIPTEN
+        data.is_fullscreen = false;
+#else
         data.is_fullscreen = true;
+#endif
 
         if (!process_arguments(&data, argc, argv)) {
                 ret = EXIT_FAILURE;
@@ -972,11 +1031,11 @@ main(int argc, char **argv)
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-        flags = SDL_WINDOW_OPENGL;
+        flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
         if (data.is_fullscreen)
                 flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
@@ -1051,19 +1110,14 @@ main(int argc, char **argv)
 
         reset_menu_state(&data);
 
-        while (!data.quit) {
-                if (data.redraw_queued) {
-                        had_event = SDL_PollEvent(&event);
-                } else {
-                        had_event = SDL_WaitEvent(&event);
-                        data.last_update_time = SDL_GetTicks();
-                }
+#ifdef EMSCRIPTEN
+        emscripten_set_main_loop_arg(emscripten_loop_cb,
+                                     &data,
+                                     0, /* fps (use browser's choice) */
+                                     true /* simulate infinite loop */);
+#endif
 
-                if (had_event)
-                        handle_event(&data, &event);
-                else if (data.redraw_queued)
-                        paint(&data);
-        }
+        run_main_loop(&data);
 
         fv_logic_free(data.logic);
 

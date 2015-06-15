@@ -1,7 +1,7 @@
 /*
  * Finvenkisto
  *
- * Copyright (C) 2014 Neil Roberts
+ * Copyright (C) 2014, 2015 Neil Roberts
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,7 +55,8 @@ struct fv_map_painter_tile {
 };
 
 struct fv_map_painter {
-        GLuint buffer;
+        GLuint vertices_buffer;
+        GLuint indices_buffer;
         struct fv_array_object *array;
         struct fv_map_painter_tile tiles[FV_MAP_TILES_X *
                                          FV_MAP_TILES_Y];
@@ -330,6 +331,17 @@ error:
         return false;
 }
 
+static int
+smallest_pot(int x)
+{
+        int y = 1;
+
+        while (y < x)
+                y *= 2;
+
+        return y;
+}
+
 struct fv_map_painter *
 fv_map_painter_new(struct fv_shader_data *shader_data)
 {
@@ -372,16 +384,31 @@ fv_map_painter_new(struct fv_shader_data *shader_data)
         if (tex_data == NULL)
                 goto error_models;
 
+        if (!fv_gl.have_npot_mipmaps) {
+                painter->texture_width = smallest_pot(tex_width);
+                painter->texture_height = smallest_pot(tex_height);
+        } else {
+                painter->texture_width = tex_width;
+                painter->texture_height = tex_height;
+        }
+
         fv_gl.glGenTextures(1, &painter->texture);
         fv_gl.glBindTexture(GL_TEXTURE_2D, painter->texture);
         fv_gl.glTexImage2D(GL_TEXTURE_2D,
                            0, /* level */
                            GL_RGB,
-                           tex_width, tex_height,
+                           painter->texture_width, painter->texture_height,
                            0, /* border */
                            GL_RGB,
                            GL_UNSIGNED_BYTE,
-                           tex_data);
+                           NULL);
+        fv_gl.glTexSubImage2D(GL_TEXTURE_2D,
+                              0, /* level */
+                              0, 0, /* x/y offset */
+                              tex_width, tex_height,
+                              GL_RGB,
+                              GL_UNSIGNED_BYTE,
+                              tex_data);
 
         fv_free(tex_data);
 
@@ -398,9 +425,6 @@ fv_map_painter_new(struct fv_shader_data *shader_data)
         fv_gl.glTexParameteri(GL_TEXTURE_2D,
                               GL_TEXTURE_WRAP_T,
                               GL_CLAMP_TO_EDGE);
-
-        painter->texture_width = tex_width;
-        painter->texture_height = tex_height;
 
         tex_uniform = fv_gl.glGetUniformLocation(painter->map_program, "tex");
         fv_gl.glUseProgram(painter->map_program);
@@ -427,28 +451,16 @@ fv_map_painter_new(struct fv_shader_data *shader_data)
                 }
         }
 
-        for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++)
-                painter->tiles[i].offset += data.vertices.length;
-
         assert(data.vertices.length / sizeof (struct vertex) < 65536);
 
         painter->array = fv_array_object_new();
 
-        fv_gl.glGenBuffers(1, &painter->buffer);
-        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, painter->buffer);
+        fv_gl.glGenBuffers(1, &painter->vertices_buffer);
+        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, painter->vertices_buffer);
         fv_gl.glBufferData(GL_ARRAY_BUFFER,
-                           data.vertices.length +
-                           data.indices.length,
-                           NULL, /* data */
+                           data.vertices.length,
+                           data.vertices.data,
                            GL_STATIC_DRAW);
-        fv_gl.glBufferSubData(GL_ARRAY_BUFFER,
-                              0, /* offset */
-                              data.vertices.length,
-                              data.vertices.data);
-        fv_gl.glBufferSubData(GL_ARRAY_BUFFER,
-                              data.vertices.length, /* offset */
-                              data.indices.length,
-                              data.indices.data);
 
         fv_array_object_set_attribute(painter->array,
                                       FV_SHADER_DATA_ATTRIB_POSITION,
@@ -457,7 +469,7 @@ fv_map_painter_new(struct fv_shader_data *shader_data)
                                       GL_FALSE, /* normalized */
                                       sizeof (struct vertex),
                                       0, /* divisor */
-                                      painter->buffer,
+                                      painter->vertices_buffer,
                                       offsetof(struct vertex, x));
 
         fv_array_object_set_attribute(painter->array,
@@ -467,10 +479,16 @@ fv_map_painter_new(struct fv_shader_data *shader_data)
                                       GL_TRUE, /* normalized */
                                       sizeof (struct vertex),
                                       0, /* divisor */
-                                      painter->buffer,
+                                      painter->vertices_buffer,
                                       offsetof(struct vertex, s));
 
-        fv_array_object_set_element_buffer(painter->array, painter->buffer);
+        fv_gl.glGenBuffers(1, &painter->indices_buffer);
+        fv_array_object_set_element_buffer(painter->array,
+                                           painter->indices_buffer);
+        fv_gl.glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                           data.indices.length,
+                           data.indices.data,
+                           GL_STATIC_DRAW);
 
         fv_buffer_destroy(&data.indices);
         fv_buffer_destroy(&data.vertices);
@@ -508,8 +526,7 @@ flush_specials(struct fv_map_painter *painter)
         fv_gl.glDrawElementsInstanced(GL_TRIANGLES,
                                       model->n_indices,
                                       GL_UNSIGNED_SHORT,
-                                      (void *) (intptr_t)
-                                      model->indices_offset,
+                                      NULL, /* offset */
                                       painter->n_instances);
 
         painter->n_instances = 0;
@@ -643,7 +660,7 @@ fv_map_painter_paint(struct fv_map_painter *painter,
                                 idx_max = tile->max;
                 }
 
-                fv_gl.glDrawRangeElements(GL_TRIANGLES,
+                fv_gl_draw_range_elements(GL_TRIANGLES,
                                           idx_min, idx_max,
                                           count,
                                           GL_UNSIGNED_SHORT,
@@ -661,7 +678,8 @@ fv_map_painter_free(struct fv_map_painter *painter)
 
         fv_gl.glDeleteTextures(1, &painter->texture);
         fv_array_object_free(painter->array);
-        fv_gl.glDeleteBuffers(1, &painter->buffer);
+        fv_gl.glDeleteBuffers(1, &painter->vertices_buffer);
+        fv_gl.glDeleteBuffers(1, &painter->indices_buffer);
 
         if (fv_gl.have_instanced_arrays)
                 fv_gl.glDeleteBuffers(1, &painter->instance_buffer);

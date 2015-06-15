@@ -34,7 +34,12 @@
 
 static const char
 fv_shader_data_version[] =
-        "#version 110\n";
+#ifdef EMSCRIPTEN
+        "#version 100\n"
+#else
+        "#version 110\n"
+#endif
+        ;
 
 static const char
 fv_shader_data_have_texture_2d_array[] =
@@ -44,6 +49,12 @@ fv_shader_data_have_texture_2d_array[] =
 static const char
 fv_shader_data_have_instanced_arrays[] =
         "#define HAVE_INSTANCED_ARRAYS 1\n";
+
+#ifdef EMSCRIPTEN
+static const char
+fv_shader_data_precision[] =
+        "precision mediump float;\n";
+#endif
 
 static const char
 fv_shader_data_newline[] =
@@ -55,6 +66,8 @@ struct fv_shader_data_shader {
         enum fv_shader_data_program programs[FV_SHADER_DATA_N_PROGRAMS + 1];
 };
 
+#define PROGRAMS_END FV_SHADER_DATA_N_PROGRAMS
+
 static const struct fv_shader_data_shader
 fv_shader_data_shaders[] = {
         {
@@ -63,38 +76,38 @@ fv_shader_data_shaders[] = {
                 {
                         FV_SHADER_DATA_PROGRAM_TEXTURE,
                         FV_SHADER_DATA_PROGRAM_HUD,
-                        -1
+                        PROGRAMS_END
                 }
         },
         {
                 GL_VERTEX_SHADER,
                 "fv-texture-vertex.glsl",
-                { FV_SHADER_DATA_PROGRAM_TEXTURE, -1 }
+                { FV_SHADER_DATA_PROGRAM_TEXTURE, PROGRAMS_END }
         },
         {
                 GL_FRAGMENT_SHADER,
                 "fv-special-fragment.glsl",
-                { FV_SHADER_DATA_PROGRAM_SPECIAL, -1 }
+                { FV_SHADER_DATA_PROGRAM_SPECIAL, PROGRAMS_END }
         },
         {
                 GL_VERTEX_SHADER,
                 "fv-special-vertex.glsl",
-                { FV_SHADER_DATA_PROGRAM_SPECIAL, -1 }
+                { FV_SHADER_DATA_PROGRAM_SPECIAL, PROGRAMS_END }
         },
         {
                 GL_FRAGMENT_SHADER,
                 "fv-person-fragment.glsl",
-                { FV_SHADER_DATA_PROGRAM_PERSON, -1 }
+                { FV_SHADER_DATA_PROGRAM_PERSON, PROGRAMS_END }
         },
         {
                 GL_VERTEX_SHADER,
                 "fv-person-vertex.glsl",
-                { FV_SHADER_DATA_PROGRAM_PERSON, -1 }
+                { FV_SHADER_DATA_PROGRAM_PERSON, PROGRAMS_END }
         },
         {
                 GL_VERTEX_SHADER,
                 "fv-hud-vertex.glsl",
-                { FV_SHADER_DATA_PROGRAM_HUD, -1 }
+                { FV_SHADER_DATA_PROGRAM_HUD, PROGRAMS_END }
         },
 };
 
@@ -108,7 +121,7 @@ create_shader(const char *name,
         GLint length, compile_status;
         GLsizei actual_length;
         GLchar *info_log;
-        const char *source_strings[5];
+        const char *source_strings[6];
         GLint lengths[FV_N_ELEMENTS(source_strings)];
         int n_strings = 0;
 
@@ -130,6 +143,13 @@ create_shader(const char *name,
                 lengths[n_strings++] =
                         sizeof fv_shader_data_have_instanced_arrays - 1;
         }
+
+#ifdef EMSCRIPTEN
+        source_strings[n_strings] =
+                fv_shader_data_precision;
+        lengths[n_strings++] =
+                sizeof fv_shader_data_precision - 1;
+#endif
 
         source_strings[n_strings] = fv_shader_data_newline;
         lengths[n_strings++] = sizeof fv_shader_data_newline - 1;
@@ -239,7 +259,7 @@ shader_contains_program(const struct fv_shader_data_shader *shader,
 {
         int i;
 
-        for (i = 0; shader->programs[i] != -1; i++) {
+        for (i = 0; shader->programs[i] != PROGRAMS_END; i++) {
                 if (shader->programs[i] == program_num)
                         return true;
         }
@@ -369,7 +389,7 @@ fv_shader_data_init(struct fv_shader_data *data)
 
         for (i = 0; i < FV_N_ELEMENTS(shaders); i++) {
                 shader = fv_shader_data_shaders + i;
-                for (j = 0; shader->programs[j] != -1; j++) {
+                for (j = 0; shader->programs[j] != PROGRAMS_END; j++) {
                         program = data->programs[shader->programs[j]];
                         fv_gl.glAttachShader(program, shaders[i]);
                 }

@@ -25,6 +25,9 @@ FINVENKISTO_EXTRA_LIBS=""
 SERVER_EXTRA_CFLAGS=""
 SERVER_EXTRA_LIBS=""
 
+AC_CHECK_DECL([EMSCRIPTEN], [IS_EMSCRIPTEN=yes], [IS_EMSCRIPTEN=no])
+AM_CONDITIONAL([IS_EMSCRIPTEN], [test "x$IS_EMSCRIPTEN" = xyes])
+
 AC_C_BIGENDIAN([AC_DEFINE([HAVE_BIG_ENDIAN], [1], [System is big-endian])],
                [AC_DEFINE([HAVE_LITTLE_ENDIAN], [1],
                           [System is little-endian])])
@@ -102,10 +105,9 @@ AC_ARG_ENABLE(
   enable_maintainer_flags=maintainer_default
 )
 
-MAINTAINER_COMPILER_FLAGS="-Wall -Wcast-align -Wuninitialized
-                           -Wno-strict-aliasing -Wempty-body -Wformat
+MAINTAINER_COMPILER_FLAGS="-Wall -Wuninitialized -Wempty-body -Wformat
                            -Wformat-security -Winit-self -Wundef
-                           -Wdeclaration-after-statement
+                           -Wdeclaration-after-statement -Wvla
                            -Wpointer-arith -Wmissing-declarations"
 
 AS_CASE(
@@ -132,11 +134,14 @@ FINVENKISTO_EXTRA_CFLAGS="$FINVENKISTO_EXTRA_CFLAGS ${MAINTAINER_CFLAGS#*  }"
 AS_COMPILER_FLAG([-std=c99],
          [FINVENKISTO_EXTRA_CFLAGS="-std=c99 $FINVENKISTO_EXTRA_CFLAGS"])
 
-AS_CASE([$host_os],
-        [mingw*],
-        [GL_CFLAGS=""],
-        [PKG_CHECK_MODULES([GL], [gl])])
-PKG_CHECK_MODULES([SDL], [sdl2])
+AS_IF([test "x$IS_EMSCRIPTEN" = "xyes"],
+      [SDL_CFLAGS="-s USE_SDL=2"
+       AC_SUBST([SDL_CFLAGS])],
+      [AS_CASE([$host_os],
+               [mingw*],
+               [GL_CFLAGS=""],
+               [PKG_CHECK_MODULES([GL], [gl])])
+      PKG_CHECK_MODULES([SDL], [sdl2])])
 
 AC_SUBST(FINVENKISTO_EXTRA_CFLAGS)
 AC_SUBST(FINVENKISTO_EXTRA_LIBS)
