@@ -170,6 +170,19 @@ fv_close(int fd)
         return ret;
 }
 
+bool
+fv_ascii_string_case_equal(const char *a, const char *b)
+{
+        while (true) {
+                if (fv_ascii_tolower(*a) != fv_ascii_tolower(*b))
+                        return false;
+                if (*a == 0)
+                        return true;
+                a++;
+                b++;
+        }
+}
+
 #ifndef HAVE_FFS
 
 int

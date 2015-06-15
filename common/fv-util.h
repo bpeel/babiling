@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __GNUC__
 #define FV_NO_RETURN __attribute__((noreturn))
@@ -146,6 +147,39 @@ fv_ascii_tolower(char ch)
         else
                 return ch;
 }
+
+static inline bool
+fv_ascii_isdigit(char ch)
+{
+        return ch >= '0' && ch <= '9';
+}
+
+static inline bool
+fv_ascii_isxdigit(char ch)
+{
+        return (fv_ascii_isdigit(ch) ||
+                (ch >= 'a' && ch <= 'f') ||
+                (ch >= 'A' && ch <= 'F'));
+}
+
+/* Returns the value of a single ASCII hexadecimal digit, which is
+ * either in upper or lower case. If the character is not a hex digit
+ * then the results are undefined.
+ */
+static inline int
+fv_ascii_xdigit_value(char ch)
+{
+        if (ch >= 'A')
+                return (ch & ~('a' - 'A')) - 'A' + 10;
+        else
+                return ch - '0';
+}
+
+/* Returns true if the given strings are the same, ignoring case. The
+ * case is compared ignoring the locale and operates on ASCII only.
+ */
+bool
+fv_ascii_string_case_equal(const char *a, const char *b);
 
 #ifdef HAVE_STATIC_ASSERT
 #define FV_STATIC_ASSERT(EXPRESSION, MESSAGE)  \
