@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "fv-util.h"
 
@@ -76,6 +77,12 @@ fv_proto_write_uint64(uint8_t *buffer,
         value = FV_UINT64_TO_LE(value);
         memcpy(buffer, &value, sizeof value);
 }
+
+ssize_t
+fv_proto_write_command_v(uint8_t *buffer,
+                         size_t buffer_length,
+                         uint16_t command,
+                         va_list ap);
 
 ssize_t
 fv_proto_write_command(uint8_t *buffer,

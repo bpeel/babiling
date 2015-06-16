@@ -29,10 +29,8 @@
 
 #define WRITE_TYPE_AP(enum_name, type_name, ap_type_name)               \
         case enum_name:                                                 \
-        if ((size_t) pos + sizeof (type_name ## _t) > buffer_length) {  \
-                pos = -1;                                               \
-                goto done;                                              \
-        }                                                               \
+        if ((size_t) pos + sizeof (type_name ## _t) > buffer_length)    \
+                return -1;                                              \
                                                                         \
         fv_proto_write_ ## type_name(buffer + pos,                      \
                                      va_arg(ap, ap_type_name));         \
@@ -44,20 +42,17 @@
         WRITE_TYPE_AP(enum_name, type_name, type_name ## _t)
 
 ssize_t
-fv_proto_write_command(uint8_t *buffer,
-                       size_t buffer_length,
-                       uint16_t command,
-                       ...)
+fv_proto_write_command_v(uint8_t *buffer,
+                         size_t buffer_length,
+                         uint16_t command,
+                         va_list ap)
 {
         ssize_t pos = FV_PROTO_HEADER_SIZE;
-        va_list ap;
 
         if (buffer_length < (size_t) pos)
                 return -1;
 
         fv_proto_write_uint16(buffer, command);
-
-        va_start(ap, command);
 
         while (true) {
                 switch (va_arg(ap, enum fv_proto_type)) {
@@ -69,14 +64,27 @@ fv_proto_write_command(uint8_t *buffer,
                 case FV_PROTO_TYPE_NONE:
                         fv_proto_write_uint16(buffer + sizeof (uint16_t),
                                               pos - FV_PROTO_HEADER_SIZE);
-                        goto done;
+                        return pos;
                 }
         }
+}
 
-done:
+ssize_t
+fv_proto_write_command(uint8_t *buffer,
+                       size_t buffer_length,
+                       uint16_t command,
+                       ...)
+{
+        ssize_t ret;
+        va_list ap;
+
+        va_start(ap, command);
+
+        ret = fv_proto_write_command_v(buffer, buffer_length, command, ap);
+
         va_end(ap);
 
-        return pos;
+        return ret;
 }
 
 #undef WRITE_TYPE
