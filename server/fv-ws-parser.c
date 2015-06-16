@@ -163,11 +163,6 @@ process_request_line(struct fv_ws_parser *parser,
                 return false;
         }
 
-        /* Assume there is no data unless we get a header specifying
-         * otherwise
-         */
-        parser->transfer_encoding = FV_WS_PARSER_TRANSFER_NONE;
-
         return true;
 }
 
@@ -212,40 +207,21 @@ process_header(struct fv_ws_parser *parser,
         if (!add_bytes_to_buffer(parser, &zero, 1, error))
                 return false;
 
-        if (fv_ascii_string_case_equal(field_name, "content-length")) {
-                char *tail;
-                unsigned long int content_length;
-                errno = 0;
-                content_length = strtoul(value, &tail, 10);
-                if (content_length > UINT_MAX || *tail || errno) {
-                        fv_set_error(error,
-                                     &fv_ws_parser_error,
-                                     FV_WS_PARSER_ERROR_INVALID,
-                                     "Invalid HTTP request received");
-                        return false;
-                }
-
-                parser->content_length = content_length;
-                parser->transfer_encoding =
-                        FV_WS_PARSER_TRANSFER_CONTENT_LENGTH;
-        } else if (fv_ascii_string_case_equal(field_name,
-                                              "transfer-encoding")) {
-                if (!fv_ascii_string_case_equal(value, "chunked")) {
-                        fv_set_error(error,
-                                     &fv_ws_parser_error,
-                                     FV_WS_PARSER_ERROR_UNSUPPORTED,
-                                     "Unsupported transfer-encoding \"%s\" "
-                                     "from client",
-                                     value);
-                        return false;
-                }
-
-                parser->transfer_encoding = FV_WS_PARSER_TRANSFER_CHUNKED;
-        }
-
         if (!parser->vtable->header_received(field_name,
                                              value,
                                              parser->user_data)) {
+                set_cancelled_error(error);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
+process_headers_finished(struct fv_ws_parser *parser,
+                         struct fv_error **error)
+{
+        if (!parser->vtable->headers_finished(parser->user_data)) {
                 set_cancelled_error(error);
                 return false;
         }
@@ -259,19 +235,11 @@ process_data(struct fv_ws_parser *parser,
              unsigned int length,
              struct fv_error **error)
 {
+        /* Ignore non-binary opcodes */
+        if (parser->opcode != 0x2)
+                return true;
+
         if (!parser->vtable->data_received(data, length, parser->user_data)) {
-                set_cancelled_error(error);
-                return false;
-        }
-
-        return true;
-}
-
-static bool
-process_request_finished(struct fv_ws_parser *parser,
-                         struct fv_error **error)
-{
-        if (!parser->vtable->request_finished(parser->user_data)) {
                 set_cancelled_error(error);
                 return false;
         }
@@ -410,27 +378,9 @@ handle_terminating_header(struct fv_ws_parser *parser,
                  * headers
                  */
                 if (parser->buf_len == 0) {
-                        switch (parser->transfer_encoding) {
-                        case FV_WS_PARSER_TRANSFER_NONE:
-                                /* The request is finished */
-                                if (!process_request_finished(parser, error))
-                                        return false;
-                                parser->buf_len = 0;
-                                parser->state =
-                                        FV_WS_PARSER_READING_REQUEST_LINE;
-                                break;
-
-                        case FV_WS_PARSER_TRANSFER_CONTENT_LENGTH:
-                                parser->state =
-                                        FV_WS_PARSER_READING_DATA_WITH_LENGTH;
-                                break;
-
-                        case FV_WS_PARSER_TRANSFER_CHUNKED:
-                                parser->state =
-                                        FV_WS_PARSER_READING_CHUNK_LENGTH;
-                                parser->content_length = 0;
-                                break;
-                        }
+                        if (!process_headers_finished(parser, error))
+                                return false;
+                        parser->state = FV_WS_PARSER_READING_FRAME_HEADER;
                 } else {
                         /* Start checking for a continuation */
                         parser->state =
@@ -479,250 +429,191 @@ handle_checking_header_continuation(struct fv_ws_parser *parser,
 }
 
 static bool
-handle_reading_data_with_length(struct fv_ws_parser *parser,
-                                struct fv_ws_parser_closure *c,
-                                struct fv_error **error)
-{
-        unsigned int to_process_length = MIN(parser->content_length, c->length);
-
-        if (!process_data(parser, c->data, to_process_length, error))
-                return false;
-
-        parser->content_length -= to_process_length;
-        c->data += to_process_length;
-        c->length -= to_process_length;
-
-        if (parser->content_length == 0) {
-                /* The request is finished */
-                if (!process_request_finished(parser, error))
-                        return false;
-
-                parser->buf_len = 0;
-                parser->state =
-                        FV_WS_PARSER_READING_REQUEST_LINE;
-        }
-
-        return true;
-}
-
-static bool
-handle_reading_chunk_length(struct fv_ws_parser *parser,
+handle_reading_frame_header(struct fv_ws_parser *parser,
                             struct fv_ws_parser_closure *c,
                             struct fv_error **error)
 {
-        if (fv_ascii_isxdigit(*c->data)) {
-                unsigned int new_length;
+        uint8_t header = c->data[0];
 
-                new_length = (parser->content_length * 0x10 +
-                              fv_ascii_xdigit_value(*c->data));
-
-                if (new_length < parser->content_length) {
-                        fv_set_error(error,
-                                     &fv_ws_parser_error,
-                                     FV_WS_PARSER_ERROR_INVALID,
-                                     "Invalid chunk length received");
-                        return false;
-                }
-
-                parser->content_length = new_length;
-
-                /* Consume the digit */
-                c->data++;
-                c->length--;
-        } else if (*c->data == ';') {
-                parser->state = FV_WS_PARSER_IGNORING_CHUNK_EXTENSION;
-        } else if (*c->data == '\r') {
-                c->data++;
-                c->length--;
-                parser->state = FV_WS_PARSER_TERMINATING_CHUNK_LENGTH;
-        } else {
-                fv_set_error(error,
-                             &fv_ws_parser_error,
-                             FV_WS_PARSER_ERROR_INVALID,
-                             "Invalid chunk length received");
-                return false;
-        }
-
-        return true;
-}
-
-static bool
-handle_terminating_chunk_length(struct fv_ws_parser *parser,
-                                struct fv_ws_parser_closure *c,
-                                struct fv_error **error)
-{
-        if (*c->data != '\n') {
-                fv_set_error(error,
-                             &fv_ws_parser_error,
-                             FV_WS_PARSER_ERROR_INVALID,
-                             "Invalid chunk length received");
-                return false;
-        }
+        parser->opcode = header & 0xf;
 
         c->data++;
         c->length--;
-
-        if (parser->content_length)
-                parser->state = FV_WS_PARSER_READING_CHUNK;
-        else
-                parser->state =
-                        FV_WS_PARSER_IGNORING_CHUNK_TRAILER;
+        parser->state = FV_WS_PARSER_READING_PAYLOAD_LENGTH;
 
         return true;
 }
 
-static bool
-handle_ignoring_chunk_extension(struct fv_ws_parser *parser,
-                                struct fv_ws_parser_closure *c,
-                                struct fv_error **error)
+static void
+got_payload_length(struct fv_ws_parser *parser)
 {
-        const uint8_t *terminator;
-
-        /* Could the data contain a terminator? */
-        if ((terminator = memchr(c->data, '\r', c->length))) {
-                parser->state = FV_WS_PARSER_TERMINATING_CHUNK_EXTENSION;
-                c->length -= terminator - c->data + 1;
-                c->data = terminator + 1;
+        if (parser->has_mask) {
+                parser->state = FV_WS_PARSER_READING_MASKING_KEY;
+                parser->got_bytes = 0;
         } else {
-                /* Consume all of the data */
-                c->length = 0;
+                parser->state = FV_WS_PARSER_READING_PAYLOAD;
         }
-
-        return true;
 }
 
 static bool
-handle_terminating_chunk_extension(struct fv_ws_parser *parser,
-                                   struct fv_ws_parser_closure *c,
-                                   struct fv_error **error)
-{
-        if (*c->data == '\n') {
-                c->data++;
-                c->length--;
-
-                if (parser->content_length)
-                        parser->state = FV_WS_PARSER_READING_CHUNK;
-                else
-                        parser->state = FV_WS_PARSER_IGNORING_CHUNK_TRAILER;
-        } else {
-                parser->state = FV_WS_PARSER_IGNORING_CHUNK_EXTENSION;
-        }
-
-        return true;
-}
-
-static bool
-handle_ignoring_chunk_trailer(struct fv_ws_parser *parser,
+handle_reading_payload_length(struct fv_ws_parser *parser,
                               struct fv_ws_parser_closure *c,
                               struct fv_error **error)
 {
-        const uint8_t *terminator;
+        uint8_t length = c->data[0];
 
-        /* Could the data contain a terminator? */
-        if ((terminator = memchr(c->data, '\r', c->length))) {
-                parser->state = FV_WS_PARSER_TERMINATING_CHUNK_TRAILER;
-                parser->content_length += terminator - c->data;
-                c->length -= terminator - c->data + 1;
-                c->data = terminator + 1;
-        } else {
-                /* Consume all of the data */
-                c->length = 0;
+        parser->has_mask = (length & 0x80) != 0;
+        parser->payload_length = length & 0x7f;
+
+        switch (parser->payload_length) {
+        case 126:
+                parser->state = FV_WS_PARSER_READING_PAYLOAD_LENGTH16;
+                parser->got_bytes = 0;
+                break;
+
+        case 127:
+                parser->state = FV_WS_PARSER_READING_PAYLOAD_LENGTH64;
+                parser->got_bytes = 0;
+                break;
+
+        default:
+                got_payload_length(parser);
+                break;
         }
+
+        c->data++;
+        c->length--;
 
         return true;
 }
 
 static bool
-handle_terminating_chunk_trailer(struct fv_ws_parser *parser,
-                                 struct fv_ws_parser_closure *c,
-                                 struct fv_error **error)
+handle_reading_payload_length16(struct fv_ws_parser *parser,
+                                struct fv_ws_parser_closure *c,
+                                struct fv_error **error)
 {
-        if (*c->data == '\n') {
-                c->length--;
-                c->data++;
-                /* A blank line marks the end of the trailer and thus
-                 * the request also
+        size_t to_read = MIN(c->length, sizeof (uint16_t) - parser->got_bytes);
+
+        memcpy((uint8_t *) &parser->payload_length + parser->got_bytes,
+               c->data,
+               to_read);
+
+        parser->got_bytes += to_read;
+
+        if (parser->got_bytes >= sizeof (uint16_t)) {
+                parser->payload_length =
+                        FV_UINT16_FROM_BE(*(uint16_t *)
+                                          &parser->payload_length);
+                got_payload_length(parser);
+        }
+
+        c->data += to_read;
+        c->length -= to_read;
+
+        return true;
+}
+
+static bool
+handle_reading_payload_length64(struct fv_ws_parser *parser,
+                                struct fv_ws_parser_closure *c,
+                                struct fv_error **error)
+{
+        size_t to_read = MIN(c->length, sizeof (uint64_t) - parser->got_bytes);
+
+        memcpy((uint8_t *) &parser->payload_length + parser->got_bytes,
+               c->data,
+               to_read);
+
+        parser->got_bytes += to_read;
+
+        if (parser->got_bytes >= sizeof (uint64_t)) {
+                parser->payload_length =
+                        FV_UINT64_FROM_BE(parser->payload_length);
+                got_payload_length(parser);
+        }
+
+        c->data += to_read;
+        c->length -= to_read;
+
+        return true;
+}
+
+static bool
+handle_reading_masking_key(struct fv_ws_parser *parser,
+                           struct fv_ws_parser_closure *c,
+                           struct fv_error **error)
+{
+        size_t to_read = MIN(c->length,
+                             sizeof parser->masking_key - parser->got_bytes);
+
+        memcpy((uint8_t *) &parser->masking_key + parser->got_bytes,
+               c->data,
+               to_read);
+
+        parser->got_bytes += to_read;
+
+        if (parser->got_bytes >= sizeof parser->masking_key) {
+                /* There's no need to byte-swap the masking key
+                 * because we're only going to use it to XOR against
+                 * integers that are read from the buffer and it will
+                 * work correctly regardless of the endianness of the
+                 * machine.
                  */
-                if (parser->content_length == 0) {
-                        if (!process_request_finished(parser, error))
-                                return false;
-                        parser->buf_len = 0;
-                        parser->state = FV_WS_PARSER_READING_REQUEST_LINE;
-                } else {
-                        parser->content_length = 0;
-                        parser->state = FV_WS_PARSER_IGNORING_CHUNK_TRAILER;
-                }
-        } else {
-                /* Count one character for the '\r' */
-                parser->content_length++;
-                parser->state = FV_WS_PARSER_IGNORING_CHUNK_TRAILER;
+                parser->state = FV_WS_PARSER_READING_MASKED_PAYLOAD;
         }
+
+        c->data += to_read;
+        c->length -= to_read;
 
         return true;
 }
 
 static bool
-handle_reading_chunk(struct fv_ws_parser *parser,
-                     struct fv_ws_parser_closure *c,
-                     struct fv_error **error)
+handle_reading_payload(struct fv_ws_parser *parser,
+                       struct fv_ws_parser_closure *c,
+                       struct fv_error **error)
 {
-        unsigned int to_process_length = MIN(parser->content_length,
-                                             c->length);
+        size_t to_read = MIN(c->length, parser->payload_length);
 
-        if (!process_data(parser, c->data, to_process_length, error))
-                return false;
+        c->data += to_read;
+        c->length -= to_read;
+        parser->payload_length -= to_read;
 
-        parser->content_length -= to_process_length;
-        c->data += to_process_length;
-        c->length -= to_process_length;
+        if (parser->payload_length <= 0)
+                parser->state = FV_WS_PARSER_READING_FRAME_HEADER;
 
-        if (parser->content_length == 0)
-                /* The chunk is finished */
-                parser->state = FV_WS_PARSER_READING_CHUNK_TERMINATOR1;
-
-        return true;
+        return process_data(parser, c->data - to_read, to_read, error);
 }
 
 static bool
-handle_reading_chunk_terminator1(struct fv_ws_parser *parser,
-                                 struct fv_ws_parser_closure *c,
-                                 struct fv_error **error)
+handle_reading_masked_payload(struct fv_ws_parser *parser,
+                              struct fv_ws_parser_closure *c,
+                              struct fv_error **error)
 {
-        if (*c->data != '\r') {
-                fv_set_error(error,
-                             &fv_ws_parser_error,
-                             FV_WS_PARSER_ERROR_INVALID,
-                             "Invalid chunk terminator received");
-                return false;
+        size_t to_read = MIN(c->length, MIN(parser->payload_length,
+                                            sizeof parser->buf));
+        uint32_t val;
+        int i;
+
+        for (i = 0;
+             i + sizeof parser->masking_key <= to_read;
+             i += sizeof parser->masking_key) {
+                memcpy(&val, c->data + i, sizeof val);
+                val ^= parser->masking_key;
+                memcpy(parser->buf + i, &val, sizeof val);
         }
 
-        c->data++;
-        c->length--;
+        for (; i < to_read; i++)
+                parser->buf[i] = c->data[i] ^ *(uint8_t *) &parser->masking_key;
 
-        parser->state = FV_WS_PARSER_READING_CHUNK_TERMINATOR2;
+        c->data += to_read;
+        c->length -= to_read;
+        parser->payload_length -= to_read;
 
-        return true;
-}
+        if (parser->payload_length <= 0)
+                parser->state = FV_WS_PARSER_READING_FRAME_HEADER;
 
-static bool
-handle_reading_chunk_terminator2(struct fv_ws_parser *parser,
-                                 struct fv_ws_parser_closure *c,
-                                 struct fv_error **error)
-{
-        if (*c->data != '\n') {
-                fv_set_error(error,
-                             &fv_ws_parser_error,
-                             FV_WS_PARSER_ERROR_INVALID,
-                             "Invalid chunk terminator received");
-                return false;
-        }
-
-        c->data++;
-        c->length--;
-
-        parser->state = FV_WS_PARSER_READING_CHUNK_LENGTH;
-
-        return true;
+        return process_data(parser, parser->buf, to_read, error);
 }
 
 bool
@@ -736,7 +627,7 @@ fv_ws_parser_parse_data(struct fv_ws_parser *parser,
         closure.data = data;
         closure.length = length;
 
-        while (length > 0) {
+        while (closure.length > 0) {
                 switch (parser->state) {
                 case FV_WS_PARSER_READING_REQUEST_LINE:
                         if (!handle_reading_request_line(parser,
@@ -773,118 +664,56 @@ fv_ws_parser_parse_data(struct fv_ws_parser *parser,
                                 return false;
                         break;
 
-                case FV_WS_PARSER_READING_DATA_WITH_LENGTH:
-                        if (!handle_reading_data_with_length(parser,
-                                                             &closure,
-                                                             error))
-                                return false;
-                        break;
-
-                case FV_WS_PARSER_READING_CHUNK_LENGTH:
-                        if (!handle_reading_chunk_length(parser,
+                case FV_WS_PARSER_READING_FRAME_HEADER:
+                        if (!handle_reading_frame_header(parser,
                                                          &closure,
                                                          error))
                                 return false;
                         break;
 
-                case FV_WS_PARSER_TERMINATING_CHUNK_LENGTH:
-                        if (!handle_terminating_chunk_length(parser,
-                                                             &closure,
-                                                             error))
-                                return false;
-                        break;
-
-                case FV_WS_PARSER_IGNORING_CHUNK_EXTENSION:
-                        if (!handle_ignoring_chunk_extension(parser,
-                                                             &closure,
-                                                             error))
-                                return false;
-                        break;
-
-                case FV_WS_PARSER_TERMINATING_CHUNK_EXTENSION:
-                        if (!handle_terminating_chunk_extension(parser,
-                                                                &closure,
-                                                                error))
-                                return false;
-                        break;
-
-                case FV_WS_PARSER_IGNORING_CHUNK_TRAILER:
-                        if (!handle_ignoring_chunk_trailer(parser,
+                case FV_WS_PARSER_READING_PAYLOAD_LENGTH:
+                        if (!handle_reading_payload_length(parser,
                                                            &closure,
                                                            error))
                                 return false;
                         break;
 
-                case FV_WS_PARSER_TERMINATING_CHUNK_TRAILER:
-                        if (!handle_terminating_chunk_trailer(parser,
-                                                              &closure,
-                                                              error))
+                case FV_WS_PARSER_READING_PAYLOAD_LENGTH16:
+                        if (!handle_reading_payload_length16(parser,
+                                                             &closure,
+                                                             error))
                                 return false;
                         break;
 
-                case FV_WS_PARSER_READING_CHUNK:
-                        if (!handle_reading_chunk(parser,
-                                                  &closure,
-                                                  error))
+                case FV_WS_PARSER_READING_PAYLOAD_LENGTH64:
+                        if (!handle_reading_payload_length64(parser,
+                                                             &closure,
+                                                             error))
                                 return false;
                         break;
 
-                case FV_WS_PARSER_READING_CHUNK_TERMINATOR1:
-                        if (!handle_reading_chunk_terminator1(parser,
-                                                              &closure,
-                                                              error))
+                case FV_WS_PARSER_READING_MASKING_KEY:
+                        if (!handle_reading_masking_key(parser,
+                                                        &closure,
+                                                        error))
                                 return false;
                         break;
 
-                case FV_WS_PARSER_READING_CHUNK_TERMINATOR2:
-                        if (!handle_reading_chunk_terminator2(parser,
-                                                              &closure,
-                                                              error))
+                case FV_WS_PARSER_READING_PAYLOAD:
+                        if (!handle_reading_payload(parser,
+                                                    &closure,
+                                                    error))
+                                return false;
+                        break;
+
+                case FV_WS_PARSER_READING_MASKED_PAYLOAD:
+                        if (!handle_reading_masked_payload(parser,
+                                                           &closure,
+                                                           error))
                                 return false;
                         break;
                 }
         }
 
         return true;
-}
-
-bool
-fv_ws_parser_parser_eof(struct fv_ws_parser *parser,
-                        struct fv_error **error)
-{
-        switch (parser->state) {
-        case FV_WS_PARSER_READING_REQUEST_LINE:
-                /* This is an acceptable place for the client to shutdown the
-                 * connection if we haven't received any of the line
-                 * yet
-                 */
-                if (parser->buf_len == 0)
-                        return true;
-
-                /* flow through */
-        case FV_WS_PARSER_TERMINATING_REQUEST_LINE:
-        case FV_WS_PARSER_READING_HEADER:
-        case FV_WS_PARSER_TERMINATING_HEADER:
-        case FV_WS_PARSER_CHECKING_HEADER_CONTINUATION:
-        case FV_WS_PARSER_READING_DATA_WITH_LENGTH:
-        case FV_WS_PARSER_READING_CHUNK_LENGTH:
-        case FV_WS_PARSER_TERMINATING_CHUNK_LENGTH:
-        case FV_WS_PARSER_IGNORING_CHUNK_EXTENSION:
-        case FV_WS_PARSER_TERMINATING_CHUNK_EXTENSION:
-        case FV_WS_PARSER_IGNORING_CHUNK_TRAILER:
-        case FV_WS_PARSER_TERMINATING_CHUNK_TRAILER:
-        case FV_WS_PARSER_READING_CHUNK:
-        case FV_WS_PARSER_READING_CHUNK_TERMINATOR1:
-        case FV_WS_PARSER_READING_CHUNK_TERMINATOR2:
-                /* Closing the connection here is invalid */
-                fv_set_error(error,
-                             &fv_ws_parser_error,
-                             FV_WS_PARSER_ERROR_INVALID,
-                             "Client closed the connection unexpectedly");
-                return false;
-        }
-
-        assert(NULL);
-
-        return false;
 }

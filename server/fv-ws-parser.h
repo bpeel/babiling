@@ -33,6 +33,7 @@ extern struct fv_error_domain
 fv_ws_parser_error;
 
 #define FV_WS_PARSER_MAX_LINE_LENGTH 512
+#define FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH (1 + 1 + 8 + 4)
 
 enum fv_ws_parser_error {
         FV_WS_PARSER_ERROR_INVALID,
@@ -47,10 +48,10 @@ struct fv_ws_parser_vtable {
         bool (* header_received)(const char *field_name,
                                  const char *value,
                                  void *user_data);
+        bool (* headers_finished)(void *user_data);
         bool (* data_received)(const uint8_t *data,
                                unsigned int length,
                                void *user_data);
-        bool (* request_finished)(void *user_data);
 };
 
 struct fv_ws_parser {
@@ -64,28 +65,23 @@ struct fv_ws_parser {
                 FV_WS_PARSER_READING_HEADER,
                 FV_WS_PARSER_TERMINATING_HEADER,
                 FV_WS_PARSER_CHECKING_HEADER_CONTINUATION,
-                FV_WS_PARSER_READING_DATA_WITH_LENGTH,
-                FV_WS_PARSER_READING_CHUNK_LENGTH,
-                FV_WS_PARSER_TERMINATING_CHUNK_LENGTH,
-                FV_WS_PARSER_IGNORING_CHUNK_EXTENSION,
-                FV_WS_PARSER_TERMINATING_CHUNK_EXTENSION,
-                FV_WS_PARSER_IGNORING_CHUNK_TRAILER,
-                FV_WS_PARSER_TERMINATING_CHUNK_TRAILER,
-                FV_WS_PARSER_READING_CHUNK,
-                FV_WS_PARSER_READING_CHUNK_TERMINATOR1,
-                FV_WS_PARSER_READING_CHUNK_TERMINATOR2
+                FV_WS_PARSER_READING_FRAME_HEADER,
+                FV_WS_PARSER_READING_PAYLOAD_LENGTH,
+                FV_WS_PARSER_READING_PAYLOAD_LENGTH16,
+                FV_WS_PARSER_READING_PAYLOAD_LENGTH64,
+                FV_WS_PARSER_READING_MASKING_KEY,
+                FV_WS_PARSER_READING_PAYLOAD,
+                FV_WS_PARSER_READING_MASKED_PAYLOAD
         } state;
+
+        size_t got_bytes;
+        uint64_t payload_length;
+        uint32_t masking_key;
+        bool has_mask;
+        uint8_t opcode;
 
         const struct fv_ws_parser_vtable *vtable;
         void *user_data;
-
-        enum {
-                FV_WS_PARSER_TRANSFER_NONE,
-                FV_WS_PARSER_TRANSFER_CONTENT_LENGTH,
-                FV_WS_PARSER_TRANSFER_CHUNKED
-        } transfer_encoding;
-
-        unsigned int content_length;
 };
 
 void
@@ -97,10 +93,6 @@ bool
 fv_ws_parser_parse_data(struct fv_ws_parser *parser,
                         const uint8_t *data,
                         unsigned int length,
-                        struct fv_error **error);
-
-bool
-fv_ws_parser_parser_eof(struct fv_ws_parser *parser,
                         struct fv_error **error);
 
 #endif /* FV_WS_PARSER_H */
