@@ -15,8 +15,6 @@ finvenkisto_server_SOURCES = \
 	fv-error.h \
 	fv-file-error.c \
 	fv-file-error.h \
-	fv-http-parser.c \
-	fv-http-parser.h \
 	fv-log.c \
 	fv-log.h \
 	fv-main-context.c \
@@ -36,6 +34,8 @@ finvenkisto_server_SOURCES = \
 	fv-socket.h \
 	fv-thread.c \
 	fv-thread.h \
+	fv-ws-parser.c \
+	fv-ws-parser.h \
 	main.c \
 	$(NULL)
 

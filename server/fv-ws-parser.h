@@ -21,8 +21,8 @@
  * OF THIS SOFTWARE.
  */
 
-#ifndef FV_HTTP_PARSER_H
-#define FV_HTTP_PARSER_H
+#ifndef FV_WS_PARSER_H
+#define FV_WS_PARSER_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,17 +30,17 @@
 #include "fv-error.h"
 
 extern struct fv_error_domain
-fv_http_parser_error;
+fv_ws_parser_error;
 
-#define FV_HTTP_PARSER_MAX_LINE_LENGTH 512
+#define FV_WS_PARSER_MAX_LINE_LENGTH 512
 
-enum fv_http_parser_error {
-        FV_HTTP_PARSER_ERROR_INVALID,
-        FV_HTTP_PARSER_ERROR_UNSUPPORTED,
-        FV_HTTP_PARSER_ERROR_CANCELLED
+enum fv_ws_parser_error {
+        FV_WS_PARSER_ERROR_INVALID,
+        FV_WS_PARSER_ERROR_UNSUPPORTED,
+        FV_WS_PARSER_ERROR_CANCELLED
 };
 
-struct fv_http_parser_vtable {
+struct fv_ws_parser_vtable {
         bool (* request_line_received)(const char *method,
                                        const char *uri,
                                        void *user_data);
@@ -53,54 +53,54 @@ struct fv_http_parser_vtable {
         bool (* request_finished)(void *user_data);
 };
 
-struct fv_http_parser {
+struct fv_ws_parser {
         unsigned int buf_len;
 
-        uint8_t buf[FV_HTTP_PARSER_MAX_LINE_LENGTH];
+        uint8_t buf[FV_WS_PARSER_MAX_LINE_LENGTH];
 
         enum {
-                FV_HTTP_PARSER_READING_REQUEST_LINE,
-                FV_HTTP_PARSER_TERMINATING_REQUEST_LINE,
-                FV_HTTP_PARSER_READING_HEADER,
-                FV_HTTP_PARSER_TERMINATING_HEADER,
-                FV_HTTP_PARSER_CHECKING_HEADER_CONTINUATION,
-                FV_HTTP_PARSER_READING_DATA_WITH_LENGTH,
-                FV_HTTP_PARSER_READING_CHUNK_LENGTH,
-                FV_HTTP_PARSER_TERMINATING_CHUNK_LENGTH,
-                FV_HTTP_PARSER_IGNORING_CHUNK_EXTENSION,
-                FV_HTTP_PARSER_TERMINATING_CHUNK_EXTENSION,
-                FV_HTTP_PARSER_IGNORING_CHUNK_TRAILER,
-                FV_HTTP_PARSER_TERMINATING_CHUNK_TRAILER,
-                FV_HTTP_PARSER_READING_CHUNK,
-                FV_HTTP_PARSER_READING_CHUNK_TERMINATOR1,
-                FV_HTTP_PARSER_READING_CHUNK_TERMINATOR2
+                FV_WS_PARSER_READING_REQUEST_LINE,
+                FV_WS_PARSER_TERMINATING_REQUEST_LINE,
+                FV_WS_PARSER_READING_HEADER,
+                FV_WS_PARSER_TERMINATING_HEADER,
+                FV_WS_PARSER_CHECKING_HEADER_CONTINUATION,
+                FV_WS_PARSER_READING_DATA_WITH_LENGTH,
+                FV_WS_PARSER_READING_CHUNK_LENGTH,
+                FV_WS_PARSER_TERMINATING_CHUNK_LENGTH,
+                FV_WS_PARSER_IGNORING_CHUNK_EXTENSION,
+                FV_WS_PARSER_TERMINATING_CHUNK_EXTENSION,
+                FV_WS_PARSER_IGNORING_CHUNK_TRAILER,
+                FV_WS_PARSER_TERMINATING_CHUNK_TRAILER,
+                FV_WS_PARSER_READING_CHUNK,
+                FV_WS_PARSER_READING_CHUNK_TERMINATOR1,
+                FV_WS_PARSER_READING_CHUNK_TERMINATOR2
         } state;
 
-        const struct fv_http_parser_vtable *vtable;
+        const struct fv_ws_parser_vtable *vtable;
         void *user_data;
 
         enum {
-                FV_HTTP_PARSER_TRANSFER_NONE,
-                FV_HTTP_PARSER_TRANSFER_CONTENT_LENGTH,
-                FV_HTTP_PARSER_TRANSFER_CHUNKED
+                FV_WS_PARSER_TRANSFER_NONE,
+                FV_WS_PARSER_TRANSFER_CONTENT_LENGTH,
+                FV_WS_PARSER_TRANSFER_CHUNKED
         } transfer_encoding;
 
         unsigned int content_length;
 };
 
 void
-fv_http_parser_init(struct fv_http_parser *parser,
-                    const struct fv_http_parser_vtable *vtable,
-                    void *user_data);
+fv_ws_parser_init(struct fv_ws_parser *parser,
+                  const struct fv_ws_parser_vtable *vtable,
+                  void *user_data);
 
 bool
-fv_http_parser_parse_data(struct fv_http_parser *parser,
-                          const uint8_t *data,
-                          unsigned int length,
-                          struct fv_error **error);
+fv_ws_parser_parse_data(struct fv_ws_parser *parser,
+                        const uint8_t *data,
+                        unsigned int length,
+                        struct fv_error **error);
 
 bool
-fv_http_parser_parser_eof(struct fv_http_parser *parser,
-                          struct fv_error **error);
+fv_ws_parser_parser_eof(struct fv_ws_parser *parser,
+                        struct fv_error **error);
 
-#endif /* FV_HTTP_PARSER_H */
+#endif /* FV_WS_PARSER_H */
