@@ -9,6 +9,8 @@ AM_CFLAGS = \
 	$(NULL)
 
 finvenkisto_server_SOURCES = \
+	fv-base64.c \
+	fv-base64.h \
 	fv-connection.c \
 	fv-connection.h \
 	fv-error.c \
