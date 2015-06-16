@@ -44,6 +44,8 @@ struct fv_base64_data {
 
 #define FV_BASE64_MAX_INPUT_FOR_SIZE(input_size)        \
         ((size_t) (input_size) * 4 / 3)
+#define FV_BASE64_ENCODED_SIZE(decoded_size) \
+        ((((decoded_size) + 2) / 3) * 4)
 
 void
 fv_base64_decode_start(struct fv_base64_data *data);
