@@ -37,6 +37,8 @@ finvenkisto_server_SOURCES = \
 	fv-ws-parser.c \
 	fv-ws-parser.h \
 	main.c \
+	sha1.c \
+	sha1.h \
 	$(NULL)
 
 finvenkisto_server_LDFLAGS = \
