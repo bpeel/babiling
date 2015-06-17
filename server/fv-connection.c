@@ -41,6 +41,9 @@
 #include "fv-file-error.h"
 #include "fv-socket.h"
 #include "fv-main-context.h"
+#include "fv-ws-parser.h"
+#include "fv-base64.h"
+#include "sha1.h"
 
 struct fv_connection {
         struct fv_netaddress remote_address;
@@ -72,7 +75,27 @@ struct fv_connection {
          * connection. This is used for garbage collection.
          */
         uint64_t last_update_time;
+
+        /* This will be NULL if the connection isn't using WebSockets. */
+        struct fv_ws_parser *ws_parser;
+        /* This is allocated temporarily between getting the WebSocket
+         * key header and finishing all of the headers.
+         */
+        SHA1_CTX *sha1_ctx;
 };
+
+static const char
+ws_sec_key_guid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+static const char
+ws_header_prefix[] =
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Accept: ";
+
+static const char
+ws_header_postfix[] = "\r\n\r\n";
 
 static bool
 emit_event(struct fv_connection *conn,
@@ -408,7 +431,8 @@ process_commands(struct fv_connection *conn)
                  * gone wrong if this happens.
                  */
                 if (payload_length + FV_PROTO_HEADER_SIZE >
-                    sizeof (conn->read_buf)) {
+                    sizeof (conn->read_buf) -
+                    FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH) {
                         fv_log("Client %s sent a command that is "
                                "too long (%lu)",
                                conn->remote_address_string,
@@ -433,31 +457,275 @@ process_commands(struct fv_connection *conn)
 }
 
 static void
-handle_read(struct fv_connection *conn)
+handle_ws_data(struct fv_connection *conn,
+               const uint8_t *data,
+               size_t length)
 {
-        int got;
+        struct fv_error *error = NULL;
+        bool ret;
+
+        ret = fv_ws_parser_parse_data(conn->ws_parser,
+                                      data,
+                                      length,
+                                      &error);
+
+        if (ret) {
+                process_commands(conn);
+        } else {
+                if (error->domain != &fv_ws_parser_error ||
+                    error->code != FV_WS_PARSER_ERROR_CANCELLED) {
+                        fv_log("WebSocket protocol error from %s: %s",
+                               conn->remote_address_string,
+                               error->message);
+                        set_error_state(conn);
+                }
+
+                fv_error_free(error);
+        }
+}
+
+static ssize_t
+repeat_read(int fd,
+            void *buffer,
+            size_t size)
+{
+        ssize_t got;
 
         do {
-                got = read(conn->sock,
-                           conn->read_buf + conn->read_buf_pos,
-                           sizeof conn->read_buf - conn->read_buf_pos);
+                got = read(fd, buffer, size);
         } while (got == -1 && errno == EINTR);
 
+        return got;
+}
+
+static void
+handle_read_error(struct fv_connection *conn,
+                  size_t got)
+{
         if (got == 0) {
                 fv_log("Connection closed for %s",
                        conn->remote_address_string);
                 set_error_state(conn);
-        } else if (got == -1) {
+        } else {
                 if (fv_file_error_from_errno(errno) != FV_FILE_ERROR_AGAIN) {
                         fv_log("Error reading from socket for %s: %s",
                                conn->remote_address_string,
                                strerror(errno));
                         set_error_state(conn);
                 }
-        } else {
-                conn->read_buf_pos += got;
+        }
+}
 
-                process_commands(conn);
+static bool
+ws_request_line_received_cb(const char *method,
+                            const char *uri,
+                            void *user_data)
+{
+        return true;
+}
+
+static bool
+ws_header_received_cb(const char *field_name,
+                      const char *value,
+                      void *user_data)
+{
+        struct fv_connection *conn = user_data;
+
+        if (!fv_ascii_string_case_equal(field_name, "sec-websocket-key"))
+                return true;
+
+        if (conn->sha1_ctx != NULL) {
+                fv_log("Client at %s sent a WebSocket header with multiple "
+                       "Sec-WebSocket-Key headers",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        conn->sha1_ctx = fv_alloc(sizeof *conn->sha1_ctx);
+        SHA1Init(conn->sha1_ctx);
+        SHA1Update(conn->sha1_ctx, (const uint8_t *) value, strlen(value));
+
+        return true;
+}
+
+static bool
+ws_headers_finished_cb(void *user_data)
+{
+        struct fv_connection *conn = user_data;
+        uint8_t sha1_hash[SHA1_DIGEST_LENGTH];
+        size_t encoded_size;
+
+        if (conn->sha1_ctx == NULL) {
+                fv_log("Client at %s sent a WebSocket header without a "
+                       "Sec-WebSocket-Key header",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        SHA1Update(conn->sha1_ctx,
+                   (const uint8_t *) ws_sec_key_guid,
+                   sizeof ws_sec_key_guid - 1);
+        SHA1Final(sha1_hash, conn->sha1_ctx);
+        fv_free(conn->sha1_ctx);
+        conn->sha1_ctx = NULL;
+
+        /* Send the WebSocket protocol response. This is the first
+         * thing we'll send to the client so there should always be
+         * enough space in the write buffer.
+         */
+
+        {
+                _Static_assert(FV_BASE64_ENCODED_SIZE(SHA1_DIGEST_LENGTH) +
+                               sizeof ws_header_prefix - 1 +
+                               sizeof ws_header_postfix - 1 <=
+                               sizeof conn->write_buf,
+                               "The write buffer is too small to contain the "
+                               "WebSocket protocol reply");
+        }
+
+        memcpy(conn->write_buf,
+               ws_header_prefix,
+               sizeof ws_header_prefix - 1);
+        encoded_size = fv_base64_encode(sha1_hash,
+                                        sizeof sha1_hash,
+                                        (char *) conn->write_buf +
+                                        sizeof ws_header_prefix - 1);
+        assert(encoded_size == FV_BASE64_ENCODED_SIZE(SHA1_DIGEST_LENGTH));
+        memcpy(conn->write_buf + sizeof ws_header_prefix - 1 + encoded_size,
+               ws_header_postfix,
+               sizeof ws_header_postfix - 1);
+
+        conn->write_buf_pos = (FV_BASE64_ENCODED_SIZE(SHA1_DIGEST_LENGTH) +
+                               sizeof ws_header_prefix - 1 +
+                               sizeof ws_header_postfix - 1);
+
+        update_poll_flags(conn);
+
+        return true;
+}
+
+static bool
+ws_data_received_cb(const uint8_t *data,
+                    unsigned int length,
+                    void *user_data)
+{
+        struct fv_connection *conn = user_data;
+
+        assert(length + conn->read_buf_pos <= sizeof conn->read_buf);
+
+        memcpy(conn->read_buf + conn->read_buf_pos, data, length);
+
+        conn->read_buf_pos += length;
+
+        return true;
+}
+
+static const struct fv_ws_parser_vtable
+ws_parser_vtable = {
+        .request_line_received = ws_request_line_received_cb,
+        .header_received = ws_header_received_cb,
+        .headers_finished = ws_headers_finished_cb,
+        .data_received = ws_data_received_cb
+};
+
+static void
+handle_ws_read(struct fv_connection *conn)
+{
+        uint8_t *tmp_buffer;
+        size_t tmp_buffer_size;
+        int got;
+
+        /* If we are filtering through a WebSocket protocol parser
+         * then we'll read into a temporary stack-allocated buffer
+         * instead. It doesn't matter that this is a throw-away buffer
+         * because the fv_ws_http_parser will preserve any state that
+         * it needs. The connection's read buffer will be used to
+         * store the data emitted by the parser.
+         *
+         * The maximum size of a command is restricted to fit within
+         * the read buffer plus the size of a frame header. That means
+         * if we always read an amount at most the size of the
+         * remaining buffer space minus the maximum frame header size
+         * then the parsed data will never overflow the buffer. We
+         * should always have processed a command and moved it out of
+         * the way before the buffer is too full to fit the maximum
+         * header size.
+         */
+        assert(conn->read_buf_pos + FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH <=
+               sizeof conn->read_buf);
+
+        tmp_buffer_size = (sizeof conn->read_buf -
+                           FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH -
+                           conn->read_buf_pos);
+        tmp_buffer = alloca(tmp_buffer_size);
+
+        got = repeat_read(conn->sock, tmp_buffer, tmp_buffer_size);
+
+        if (got <= 0)
+                handle_read_error(conn, got);
+        else
+                handle_ws_data(conn, tmp_buffer, got);
+}
+
+static void
+upgrade_to_websocket(struct fv_connection *conn,
+                     const uint8_t *data,
+                     size_t length)
+{
+        uint8_t *tmp_buffer;
+
+        /* Copy the data to a temporary buffer so that parsing the
+         * data can't cause the read buffer to be written. This
+         * probably shouldn't happen anyway because the client would
+         * have to have send data without waiting for the WebSocket
+         * response, but we don't want it to confuse the parser if a
+         * malicious client did this.
+         */
+        tmp_buffer = alloca(length);
+        memcpy(tmp_buffer, data, length);
+
+        conn->ws_parser = fv_alloc(sizeof *conn->ws_parser);
+        fv_ws_parser_init(conn->ws_parser,
+                          &ws_parser_vtable,
+                          conn);
+
+        handle_ws_data(conn, tmp_buffer, length);
+}
+
+static void
+handle_read(struct fv_connection *conn)
+{
+        ssize_t got;
+
+        if (conn->ws_parser) {
+                handle_ws_read(conn);
+                return;
+        }
+
+        got = repeat_read(conn->sock,
+                          conn->read_buf + conn->read_buf_pos,
+                          sizeof conn->read_buf - conn->read_buf_pos);
+
+        if (got <= 0) {
+                handle_read_error(conn, got);
+        } else {
+                /* If this is the first command and it looks like it
+                 * might be a WebSocket header then we'll upgrade to
+                 * filtering it through a WebSocket parser.
+                 */
+                if (conn->player == NULL &&
+                    conn->ws_parser == NULL &&
+                    conn->read_buf_pos == 0 &&
+                    got >= 3 &&
+                    !memcmp(conn->read_buf, "GET", 3)) {
+                        upgrade_to_websocket(conn, conn->read_buf, got);
+                } else {
+                        conn->read_buf_pos += got;
+
+                        process_commands(conn);
+                }
         }
 }
 
@@ -519,6 +787,12 @@ fv_connection_free(struct fv_connection *conn)
         if (conn->player)
                 conn->player->ref_count--;
 
+        if (conn->ws_parser)
+                fv_free(conn->ws_parser);
+
+        if (conn->sha1_ctx)
+                fv_free(conn->sha1_ctx);
+
         fv_free(conn);
 }
 
@@ -537,6 +811,8 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
         conn->remote_address_string = fv_netaddress_to_string(remote_address);
         conn->playerbase = playerbase;
         conn->player = NULL;
+        conn->ws_parser = NULL;
+        conn->sha1_ctx = NULL;
 
         fv_signal_init(&conn->event_signal);
 
