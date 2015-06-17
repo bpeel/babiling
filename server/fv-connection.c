@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <stdarg.h>
 
 #include "fv-connection.h"
 #include "fv-proto.h"
@@ -181,6 +182,70 @@ update_poll_flags(struct fv_connection *conn)
         fv_main_context_modify_poll(conn->socket_source, flags);
 }
 
+static ssize_t
+write_command(struct fv_connection *conn,
+              uint16_t command,
+              ...)
+{
+        ssize_t ret;
+        va_list ap;
+
+        if (conn->ws_parser == NULL) {
+                va_start(ap, command);
+
+                ret = fv_proto_write_command_v(conn->write_buf +
+                                               conn->write_buf_pos,
+                                               sizeof conn->write_buf -
+                                               conn->write_buf_pos,
+                                               command,
+                                               ap);
+
+                va_end(ap);
+
+                return ret;
+        }
+
+        /* Every command will be split up into its own frame and
+         * message. It is assumed that all of the protocol messages
+         * will be shorter than 126 bytes so we can always use the
+         * short frame payload length.
+         *
+         * If there's not enough space for the 2-byte frame header
+         * then give up already.
+         */
+        if (conn->write_buf_pos + 2 + FV_PROTO_HEADER_SIZE >
+            sizeof conn->write_buf_pos)
+                return -1;
+
+        va_start(ap, command);
+
+        ret = fv_proto_write_command_v(conn->write_buf +
+                                       conn->write_buf_pos +
+                                       2,
+                                       sizeof conn->write_buf -
+                                       conn->write_buf_pos -
+                                       2,
+                                       command,
+                                       ap);
+
+        va_end(ap);
+
+        if (ret == -1)
+                return -1;
+
+        /* If the message length is any greater than this then it will
+         * need an extended payload length.
+         */
+        assert(ret < 126);
+
+        /* FIN bit set and binary opcode */
+        conn->write_buf[conn->write_buf_pos] = 0x82;
+        /* Payload length with no mask bit */
+        conn->write_buf[conn->write_buf_pos + 1] = ret;
+
+        return ret + 2;
+}
+
 static bool
 write_player_state(struct fv_connection *conn,
                    int player_num)
@@ -205,25 +270,24 @@ write_player_state(struct fv_connection *conn,
                 player_num--;
 
         if (*state & FV_PLAYER_STATE_POSITION) {
-                wrote = fv_proto_write_command(conn->write_buf +
-                                               conn->write_buf_pos,
-                                               sizeof conn->write_buf -
-                                               conn->write_buf_pos,
-                                               FV_PROTO_PLAYER_POSITION,
+                wrote = write_command(conn,
 
-                                               FV_PROTO_TYPE_UINT16,
-                                               (uint16_t) player_num,
+                                      FV_PROTO_PLAYER_POSITION,
 
-                                               FV_PROTO_TYPE_UINT32,
-                                               player->x_position,
+                                      FV_PROTO_TYPE_UINT16,
+                                      (uint16_t) player_num,
 
-                                               FV_PROTO_TYPE_UINT32,
-                                               player->y_position,
+                                      FV_PROTO_TYPE_UINT32,
+                                      player->x_position,
 
-                                               FV_PROTO_TYPE_UINT16,
-                                               player->direction,
+                                      FV_PROTO_TYPE_UINT32,
+                                      player->y_position,
 
-                                               FV_PROTO_TYPE_NONE);
+                                      FV_PROTO_TYPE_UINT16,
+                                      player->direction,
+
+                                      FV_PROTO_TYPE_NONE);
+
                 if (wrote == -1)
                         return false;
 
@@ -239,15 +303,15 @@ write_player_id(struct fv_connection *conn)
 {
         ssize_t wrote;
 
-        wrote = fv_proto_write_command(conn->write_buf + conn->write_buf_pos,
-                                       sizeof conn->write_buf -
-                                       conn->write_buf_pos,
-                                       FV_PROTO_PLAYER_ID,
+        wrote = write_command(conn,
 
-                                       FV_PROTO_TYPE_UINT64,
-                                       conn->player->id,
+                              FV_PROTO_PLAYER_ID,
 
-                                       FV_PROTO_TYPE_NONE);
+                              FV_PROTO_TYPE_UINT64,
+                              conn->player->id,
+
+                              FV_PROTO_TYPE_NONE);
+
         if (wrote == -1)
                 return false;
 
@@ -281,14 +345,11 @@ fill_write_buf(struct fv_connection *conn)
                  * connection's own player to the client so we don't
                  * include it in the count.
                  */
-                wrote = fv_proto_write_command(conn->write_buf +
-                                               conn->write_buf_pos,
-                                               sizeof conn->write_buf -
-                                               conn->write_buf_pos,
-                                               FV_PROTO_N_PLAYERS,
-                                               FV_PROTO_TYPE_UINT16,
-                                               (uint16_t) (n_players - 1),
-                                               FV_PROTO_TYPE_NONE);
+                wrote = write_command(conn,
+                                      FV_PROTO_N_PLAYERS,
+                                      FV_PROTO_TYPE_UINT16,
+                                      (uint16_t) (n_players - 1),
+                                      FV_PROTO_TYPE_NONE);
                 if (wrote == -1)
                         return;
 
@@ -306,12 +367,9 @@ fill_write_buf(struct fv_connection *conn)
                 }
         }
 
-        wrote = fv_proto_write_command(conn->write_buf +
-                                       conn->write_buf_pos,
-                                       sizeof conn->write_buf -
-                                       conn->write_buf_pos,
-                                       FV_PROTO_CONSISTENT,
-                                       FV_PROTO_TYPE_NONE);
+        wrote = write_command(conn,
+                              FV_PROTO_CONSISTENT,
+                              FV_PROTO_TYPE_NONE);
         if (wrote == -1)
                 return;
 
