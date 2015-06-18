@@ -631,10 +631,12 @@ process_frames(struct fv_connection *conn)
                                payload_length);
                         conn->message_data_length += payload_length;
 
-                        if (is_fin && !process_message(conn))
-                                return;
+                        if (is_fin) {
+                                if (!process_message(conn))
+                                        return;
 
-                        conn->message_data_length = 0;
+                                conn->message_data_length = 0;
+                        }
                 }
 
                 data += payload_length;
