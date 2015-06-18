@@ -12,6 +12,7 @@ libcommon_a_SOURCES = \
 	fv-pointer-array.h \
 	fv-proto.c \
 	fv-proto.h \
+	fv-proto-types.h \
 	fv-util.c \
 	fv-util.h \
 	$(NULL)

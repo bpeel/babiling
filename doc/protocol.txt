@@ -1,21 +1,15 @@
 General notes
 =============
 
+The protocol is based on the WebSocket protocol. Once a WebSocket
+connection is established, each end sends messages that correspond to
+WebSocket messages. Each message begins with a single byte
+containining the message ID. After that is the payload. The contents
+of the payload depends on the message type, as described below. Each
+message must be exactly sized to contain the message ID + the payload,
+ie, there can be no extra data at the end of the message.
+
 All numbers are in little-endian.
-
-The client and server both send messages of the following form:
-
-• uint16_t message_id
-
-A number representing the type of message. These are described below.
-
-• uint16_t payload_length
-
-The number of bytes in the message payload not including these two fields.
-
-• payload
-
-The format of the payload depends on the message ID.
 
 A player in the game is distinct from the network connection. The
 intention is that if the connection is dropped then the client can
@@ -42,8 +36,8 @@ Messages to the server
 The client initiates the communication by sending one of the following
 messages:
 
-NEW_PLAYER (0x1000)
--------------------
+NEW_PLAYER (0x80)
+-----------------
 
 • Empty payload
 
@@ -51,8 +45,8 @@ This should be sent when the client first starts and hasn't tried
 connecting before. The server will create a player ID and send it in a
 PLAYER_ID message.
 
-RECONNECT (0x1001)
-------------------
+RECONNECT (0x81)
+----------------
 
 • uint64_t player_id
 
@@ -62,8 +56,8 @@ message from the server. If the server hasn't heard of this ID or the
 player has been lost then it will generate a new ID instead as if
 NEW_PLAYER was sent.
 
-UPDATE_POSITION (0x1002)
-------------------------
+UPDATE_POSITION (0x82)
+----------------------
 
 • uint32_t x_position
 • uint32_t y_position
@@ -71,8 +65,8 @@ UPDATE_POSITION (0x1002)
 
 Sent by the client whenever the player has moved.
 
-KEEP_ALIVE (0x1003)
--------------------
+KEEP_ALIVE (0x83)
+-----------------
 
 • No payload
 
@@ -83,8 +77,8 @@ client can send this empty message. No response is sent.
 Messages to the client
 ======================
 
-PLAYER_ID (0x0000)
-------------------
+PLAYER_ID (0x00)
+----------------
 
 • uint64_t player_id
 
@@ -95,8 +89,8 @@ which case a new player ID will be generated. Therefore the client
 should be prepared to update its player ID whenever this message is
 received.
 
-CONSISTENT (0x0001)
--------------------
+CONSISTENT (0x01)
+-----------------
 
 • No payload
 
@@ -105,16 +99,16 @@ client has a consistent state that can be drawn. This is used to avoid
 the client painting with a partially updated state for example if a
 player's appearance depends on multiple messages.
 
-N_PLAYERS (0x0002)
-------------------
+N_PLAYERS (0x02)
+----------------
 
 • uint16_t n_players
 
 Sent by the server to update the number of players that are currently
 connected. This won't include the player of this client.
 
-PLAYER_POSITION (0x0003)
-------------------------
+PLAYER_POSITION (0x03)
+----------------------
 
 • uint16_t player_num
 • uint32_t x_position

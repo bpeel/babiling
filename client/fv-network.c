@@ -85,6 +85,13 @@ struct fv_network {
         bool has_player_id;
         uint64_t player_id;
 
+        /* Position along the websocket headers terminiator that we
+         * have received so far. Once this reaches the length of
+         * terminator we can assume the WebSocket connection is
+         * established and start processing messages.
+         */
+        uint8_t ws_terminator_pos;
+
         bool player_dirty;
         struct fv_person player;
 
@@ -124,6 +131,28 @@ struct fv_network {
         uint32_t last_update_time;
 };
 
+/* Minimal header that the server will recognise as a WebSocket
+ * connection. We don't need to do the WebSocket key dance because
+ * that is only for browsers to help run untrusted programs.
+ */
+static const uint8_t
+websocket_header[] =
+        "GET /finvenkisto HTTP/1.1\r\n"
+        "Host: stub.com\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: stub\r\n"
+        "Origin: http://stub.com\r\n"
+        "\r\n";
+
+/* All data is ignored from the server until this sequence of
+ * characters is seen. This is inorder to ignore the WebSocket header
+ * reply.
+ */
+static const uint8_t
+websocket_headers_terminator[] =
+        "\r\n\r\n";
+
 #define FV_NETWORK_MAX_CONNECT_WAIT_TIME (15 * 1000)
 
 #define FV_NETWORK_N_PLAYERS(nw)                                \
@@ -136,8 +165,17 @@ struct fv_network {
 static void
 set_connected(struct fv_network *nw)
 {
+        if (nw->connected)
+                return;
+
         nw->connected = true;
         nw->connect_wait_time = 0;
+
+        /* As soon as the connection is established then we want to
+         * write the WebSocket request header.
+         */
+        nw->write_buf_pos = sizeof websocket_header - 1;
+        memcpy(nw->write_buf, websocket_header, sizeof websocket_header - 1);
 }
 
 static void
@@ -301,6 +339,7 @@ try_connect(struct fv_network *nw)
         nw->read_buf_pos = 0;
         nw->write_buf_pos = 0;
         nw->last_update_time = SDL_GetTicks();
+        nw->ws_terminator_pos = 0;
 
         if (!nw->next_host->resolved &&
             !resolve_next_host(nw))
@@ -504,13 +543,15 @@ handle_write(struct fv_network *nw)
 
 static bool
 handle_player_id(struct fv_network *nw,
-                 const uint8_t *message)
+                 const uint8_t *payload,
+                 size_t payload_length)
 {
         uint64_t player_id;
 
-        if (fv_proto_read_command(message,
-                                  FV_PROTO_TYPE_UINT64, &player_id,
-                                  FV_PROTO_TYPE_NONE) == -1) {
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT64, &player_id,
+                                   FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
         }
@@ -523,12 +564,14 @@ handle_player_id(struct fv_network *nw,
 
 static bool
 handle_consistent(struct fv_network *nw,
-                  const uint8_t *message)
+                  const uint8_t *payload,
+                  size_t payload_length)
 {
         struct fv_network_consistent_event event;
 
-        if (fv_proto_read_command(message,
-                                  FV_PROTO_TYPE_NONE) == -1) {
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
         }
@@ -548,13 +591,15 @@ handle_consistent(struct fv_network *nw,
 
 static bool
 handle_n_players(struct fv_network *nw,
-                 const uint8_t *message)
+                 const uint8_t *payload,
+                 size_t payload_length)
 {
         uint16_t n_players;
 
-        if (fv_proto_read_command(message,
-                                  FV_PROTO_TYPE_UINT16, &n_players,
-                                  FV_PROTO_TYPE_NONE) == -1) {
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT16, &n_players,
+                                   FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
         }
@@ -568,17 +613,19 @@ handle_n_players(struct fv_network *nw,
 
 static bool
 handle_player_position(struct fv_network *nw,
-                       const uint8_t *message)
+                       const uint8_t *payload,
+                       size_t payload_length)
 {
         struct fv_person player;
         uint16_t player_num;
 
-        if (fv_proto_read_command(message,
-                                  FV_PROTO_TYPE_UINT16, &player_num,
-                                  FV_PROTO_TYPE_UINT32, &player.x_position,
-                                  FV_PROTO_TYPE_UINT32, &player.y_position,
-                                  FV_PROTO_TYPE_UINT16, &player.direction,
-                                  FV_PROTO_TYPE_NONE) == -1) {
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT16, &player_num,
+                                   FV_PROTO_TYPE_UINT32, &player.x_position,
+                                   FV_PROTO_TYPE_UINT32, &player.y_position,
+                                   FV_PROTO_TYPE_UINT16, &player.direction,
+                                   FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
         }
@@ -597,10 +644,11 @@ handle_player_position(struct fv_network *nw,
 static bool
 handle_server_data(struct fv_network *nw)
 {
-        uint16_t payload_length;
-        const uint8_t *message;
+        size_t frame_payload_length, message_payload_length;
+        const uint8_t *frame, *message_payload;
         size_t pos = 0;
         int got;
+        int i;
 
         got = read(nw->sock,
                    nw->read_buf + nw->read_buf_pos,
@@ -611,48 +659,81 @@ handle_server_data(struct fv_network *nw)
                 return false;
         }
 
-        nw->read_buf_pos += got;
-
-        while (pos + FV_PROTO_HEADER_SIZE <= nw->read_buf_pos) {
-                message = nw->read_buf + pos;
-                payload_length = fv_proto_get_payload_length(message);
-
-                if (payload_length + FV_PROTO_HEADER_SIZE >
-                    sizeof nw->read_buf) {
-                        /* The server has sent a message that we can't
-                         * fit in the read buffer. There shouldn't be
-                         * any messages this big so something has gone
-                         * wrong.
-                         */
-                        set_socket_error(nw);
-                        return false;
+        if (nw->ws_terminator_pos < sizeof websocket_headers_terminator - 1) {
+                for (i = 0; i < got; i++) {
+                        if (nw->read_buf[i] ==
+                            websocket_headers_terminator
+                            [nw->ws_terminator_pos]) {
+                                nw->ws_terminator_pos++;
+                                if (nw->ws_terminator_pos >=
+                                    sizeof websocket_headers_terminator - 1) {
+                                        got -= i + 1;
+                                        memmove(nw->read_buf,
+                                                nw->read_buf + i + 1,
+                                                got);
+                                        goto found_terminator;
+                                }
+                        } else {
+                                nw->ws_terminator_pos = 0;
+                        }
                 }
 
+                /* We haven't found the terminator yet so just ignore
+                 * the data.
+                 */
+                return true;
+        }
+found_terminator:
+
+        nw->read_buf_pos += got;
+
+        while (pos + FV_PROTO_HEADER_SIZE + 2 <= nw->read_buf_pos) {
+                /* This assumes none of the messages will be
+                 * fragmented, the length is only in one byte and there
+                 * is no masking. We are talking directly to the
+                 * server without going through a browser so there
+                 * should be no reason for anything to end up using
+                 * the more complicated WebSocket protocol features.
+                 */
+                frame = nw->read_buf + pos;
+                frame_payload_length = frame[1];
+
                 /* If we haven't got a complete message then stop processing */
-                if (pos + payload_length + FV_PROTO_HEADER_SIZE >
-                    sizeof nw->read_buf)
+                if (pos + frame_payload_length + 2 > nw->read_buf_pos)
                         break;
 
-                switch (fv_proto_get_message_id(message)) {
+                message_payload = frame + 2 + FV_PROTO_HEADER_SIZE;
+                message_payload_length = (frame_payload_length -
+                                          FV_PROTO_HEADER_SIZE);
+
+                switch (frame[2]) {
                 case FV_PROTO_PLAYER_ID:
-                        if (!handle_player_id(nw, message))
+                        if (!handle_player_id(nw,
+                                              message_payload,
+                                              message_payload_length))
                                 return false;
                         break;
                 case FV_PROTO_CONSISTENT:
-                        if (!handle_consistent(nw, message))
+                        if (!handle_consistent(nw,
+                                               message_payload,
+                                               message_payload_length))
                                 return false;
                         break;
                 case FV_PROTO_N_PLAYERS:
-                        if (!handle_n_players(nw, message))
+                        if (!handle_n_players(nw,
+                                              message_payload,
+                                              message_payload_length))
                                 return false;
                         break;
                 case FV_PROTO_PLAYER_POSITION:
-                        if (!handle_player_position(nw, message))
+                        if (!handle_player_position(nw,
+                                                    message_payload,
+                                                    message_payload_length))
                                 return false;
                         break;
                 }
 
-                pos += payload_length + FV_PROTO_HEADER_SIZE;
+                pos += frame_payload_length + 2;
         }
 
         /* Move any remaining partial message to the beginning of the buffer */

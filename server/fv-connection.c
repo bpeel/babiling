@@ -70,6 +70,24 @@ struct fv_connection {
         uint8_t write_buf[1024];
         size_t write_buf_pos;
 
+        /* If pong_queued is non-zero then pong_data then we need to
+         * send a pong control frame with the payload given payload.
+         */
+        bool pong_queued;
+        _Static_assert(FV_PROTO_MAX_CONTROL_FRAME_PAYLOAD <= UINT8_MAX,
+                       "The max pong data length is too for a uint8_t");
+        uint8_t pong_data_length;
+        uint8_t pong_data[FV_PROTO_MAX_CONTROL_FRAME_PAYLOAD];
+
+        /* If message_data_length is non-zero then we are part way
+         * through reading a message whose data is stored in
+         * message_data.
+         */
+        _Static_assert(FV_PROTO_MAX_MESSAGE_SIZE <= UINT8_MAX,
+                       "The message size is too long for a uint8_t");
+        uint8_t message_data_length;
+        uint8_t message_data[FV_PROTO_MAX_MESSAGE_SIZE];
+
         struct fv_signal event_signal;
 
         /* Last monotonic clock time when data was received on this
@@ -77,7 +95,9 @@ struct fv_connection {
          */
         uint64_t last_update_time;
 
-        /* This will be NULL if the connection isn't using WebSockets. */
+        /* This is freed and becomes NULL once the headers have all
+         * been parsed.
+         */
         struct fv_ws_parser *ws_parser;
         /* This is allocated temporarily between getting the WebSocket
          * key header and finishing all of the headers.
@@ -160,6 +180,9 @@ connection_is_ready_to_write(struct fv_connection *conn)
         if (conn->write_buf_pos > 0)
                 return true;
 
+        if (conn->pong_queued)
+                return true;
+
         if (conn->player) {
                 if (!conn->sent_player_id)
                         return true;
@@ -190,60 +213,18 @@ write_command(struct fv_connection *conn,
         ssize_t ret;
         va_list ap;
 
-        if (conn->ws_parser == NULL) {
-                va_start(ap, command);
-
-                ret = fv_proto_write_command_v(conn->write_buf +
-                                               conn->write_buf_pos,
-                                               sizeof conn->write_buf -
-                                               conn->write_buf_pos,
-                                               command,
-                                               ap);
-
-                va_end(ap);
-
-                return ret;
-        }
-
-        /* Every command will be split up into its own frame and
-         * message. It is assumed that all of the protocol messages
-         * will be shorter than 126 bytes so we can always use the
-         * short frame payload length.
-         *
-         * If there's not enough space for the 2-byte frame header
-         * then give up already.
-         */
-        if (conn->write_buf_pos + 2 + FV_PROTO_HEADER_SIZE >
-            sizeof conn->write_buf_pos)
-                return -1;
-
         va_start(ap, command);
 
         ret = fv_proto_write_command_v(conn->write_buf +
-                                       conn->write_buf_pos +
-                                       2,
+                                       conn->write_buf_pos,
                                        sizeof conn->write_buf -
-                                       conn->write_buf_pos -
-                                       2,
+                                       conn->write_buf_pos,
                                        command,
                                        ap);
 
         va_end(ap);
 
-        if (ret == -1)
-                return -1;
-
-        /* If the message length is any greater than this then it will
-         * need an extended payload length.
-         */
-        assert(ret < 126);
-
-        /* FIN bit set and binary opcode */
-        conn->write_buf[conn->write_buf_pos] = 0x82;
-        /* Payload length with no mask bit */
-        conn->write_buf[conn->write_buf_pos + 1] = ret;
-
-        return ret + 2;
+        return ret;
 }
 
 static bool
@@ -321,12 +302,34 @@ write_player_id(struct fv_connection *conn)
         return true;
 }
 
+static bool
+write_pong(struct fv_connection *conn)
+{
+        if (conn->write_buf_pos + conn->pong_data_length + 2 >
+            sizeof (conn->write_buf))
+                return false;
+
+        /* FIN bit + opcode 0xa (pong) */
+        conn->write_buf[conn->write_buf_pos++] = 0x8a;
+        conn->write_buf[conn->write_buf_pos++] = conn->pong_data_length;
+        memcpy(conn->write_buf + conn->write_buf_pos,
+               conn->pong_data,
+               conn->pong_data_length);
+        conn->write_buf_pos += conn->pong_data_length;
+        conn->pong_queued = false;
+
+        return true;
+}
+
 static void
 fill_write_buf(struct fv_connection *conn)
 {
         int n_players;
         ssize_t wrote;
         int i;
+
+        if (conn->pong_queued && !write_pong(conn))
+                return;
 
         if (conn->player == NULL)
                 return;
@@ -378,12 +381,45 @@ fill_write_buf(struct fv_connection *conn)
 }
 
 static bool
-handle_new_player(struct fv_connection *conn,
-                  const uint8_t *data)
+process_control_frame(struct fv_connection *conn,
+                      int opcode,
+                      const uint8_t *data,
+                      size_t data_length)
+{
+        switch (opcode) {
+        case 0x8:
+                fv_log("Client %s sent a close control frame",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        case 0x9:
+                assert(data_length < sizeof conn->pong_data);
+                memcpy(conn->pong_data, data, data_length);
+                conn->pong_data_length = data_length;
+                conn->pong_queued = true;
+                update_poll_flags(conn);
+                break;
+        case 0xa:
+                /* pong, ignore */
+                break;
+        default:
+                fv_log("Client %s sent an unknown control frame",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
+handle_new_player(struct fv_connection *conn)
 {
         struct fv_connection_event event;
 
-        if (fv_proto_read_command(data, FV_PROTO_TYPE_NONE) == -1) {
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
+                                   FV_PROTO_TYPE_NONE)) {
                 fv_log("Invalid new player command received from %s",
                        conn->remote_address_string);
                 set_error_state(conn);
@@ -396,17 +432,17 @@ handle_new_player(struct fv_connection *conn,
 }
 
 static bool
-handle_reconnect(struct fv_connection *conn,
-                 const uint8_t *data)
+handle_reconnect(struct fv_connection *conn)
 {
         struct fv_connection_reconnect_event event;
 
-        if (fv_proto_read_command(data,
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
 
-                                  FV_PROTO_TYPE_UINT64,
-                                  &event.player_id,
+                                   FV_PROTO_TYPE_UINT64,
+                                   &event.player_id,
 
-                                  FV_PROTO_TYPE_NONE) == -1) {
+                                   FV_PROTO_TYPE_NONE)) {
                 fv_log("Invalid reconnect command received from %s",
                        conn->remote_address_string);
                 set_error_state(conn);
@@ -419,23 +455,23 @@ handle_reconnect(struct fv_connection *conn,
 }
 
 static bool
-handle_update_position(struct fv_connection *conn,
-                       const uint8_t *data)
+handle_update_position(struct fv_connection *conn)
 {
         struct fv_connection_update_position_event event;
 
-        if (fv_proto_read_command(data,
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
 
-                                  FV_PROTO_TYPE_UINT32,
-                                  &event.x_position,
+                                   FV_PROTO_TYPE_UINT32,
+                                   &event.x_position,
 
-                                  FV_PROTO_TYPE_UINT32,
-                                  &event.y_position,
+                                   FV_PROTO_TYPE_UINT32,
+                                   &event.y_position,
 
-                                  FV_PROTO_TYPE_UINT16,
-                                  &event.direction,
+                                   FV_PROTO_TYPE_UINT16,
+                                   &event.direction,
 
-                                  FV_PROTO_TYPE_NONE) == -1) {
+                                   FV_PROTO_TYPE_NONE)) {
                 fv_log("Invalid update position command received from %s",
                        conn->remote_address_string);
                 set_error_state(conn);
@@ -448,98 +484,165 @@ handle_update_position(struct fv_connection *conn,
 }
 
 static bool
-process_command(struct fv_connection *conn,
-                const uint8_t *data)
+process_message(struct fv_connection *conn)
 {
-        switch (fv_proto_get_message_id(data)) {
+        switch (conn->message_data[0]) {
         case FV_PROTO_NEW_PLAYER:
-                return handle_new_player(conn, data);
+                return handle_new_player(conn);
         case FV_PROTO_RECONNECT:
-                return handle_reconnect(conn, data);
+                return handle_reconnect(conn);
         case FV_PROTO_UPDATE_POSITION:
-                return handle_update_position(conn, data);
+                return handle_update_position(conn);
         }
 
-        /* Unknown command which we'll just ignore */
-        return true;
+        fv_log("Client %s sent an unknown message ID (0x%u)",
+               conn->remote_address_string,
+               conn->message_data[0]);
+        set_error_state(conn);
+
+        return false;
 }
 
 static void
-process_commands(struct fv_connection *conn)
+unmask_data(uint32_t mask,
+            uint8_t *buffer,
+            size_t buffer_length)
 {
-        uint16_t payload_length;
+        uint32_t val;
+        int i;
+
+        for (i = 0; i + sizeof mask <= buffer_length; i += sizeof mask) {
+                memcpy(&val, buffer + i, sizeof val);
+                val ^= mask;
+                memcpy(buffer + i, &val, sizeof val);
+        }
+
+        for (; i < buffer_length; i++)
+                buffer[i] ^= *(uint8_t *) &mask;
+}
+
+static void
+process_frames(struct fv_connection *conn)
+{
         uint8_t *data = conn->read_buf;
         size_t length = conn->read_buf_pos;
-        uint64_t now = fv_main_context_get_monotonic_clock(NULL);
-
-        conn->last_update_time = now;
-
-        if (conn->player)
-                conn->player->last_update_time = now;
+        bool has_mask;
+        bool is_fin;
+        uint32_t mask;
+        uint8_t payload_length;
+        uint8_t opcode;
 
         while (true) {
-                if (length < FV_PROTO_HEADER_SIZE)
+                if (length < 2)
                         break;
 
-                payload_length = fv_proto_get_payload_length(data);
-
-                /* Don't let the client try to send a command that
-                 * would overflow the read buffer. All of the commands
-                 * in the protocol are quite short so something has
-                 * gone wrong if this happens.
+                is_fin = data[0] & 0x80;
+                opcode = data[0] & 0xf;
+                has_mask = data[1] & 0x80;
+                /* The extended payload lengths are currently just
+                 * treated as lengths of 126 and 127 because any
+                 * length greater than 125 will be caught by one of
+                 * the error conditions below anyway.
                  */
-                if (payload_length + FV_PROTO_HEADER_SIZE >
-                    sizeof (conn->read_buf) -
-                    FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH) {
-                        fv_log("Client %s sent a command that is "
-                               "too long (%lu)",
-                               conn->remote_address_string,
-                               (unsigned long)
-                               (payload_length + FV_PROTO_HEADER_SIZE));
+                payload_length = data[1] & 0x7f;
+
+                /* RSV bits must be zero */
+                if (data[0] & 0x70) {
+                        fv_log("Client %s sent a frame with non-zero "
+                               "RSV bits",
+                               conn->remote_address_string);
                         set_error_state(conn);
                         return;
                 }
 
-                if (length < FV_PROTO_HEADER_SIZE + payload_length)
+                if (opcode & 0x8) {
+                        /* Control frame */
+                        if (payload_length >
+                            FV_PROTO_MAX_CONTROL_FRAME_PAYLOAD) {
+                                fv_log("Client %s sent a control frame (0x%x) "
+                                       "that is too long (%u)",
+                                       conn->remote_address_string,
+                                       opcode,
+                                       payload_length);
+                                set_error_state(conn);
+                                return;
+                        }
+                        if (!is_fin) {
+                                fv_log("Client %s sent a fragmented "
+                                       "control frame",
+                                       conn->remote_address_string);
+                                set_error_state(conn);
+                                return;
+                        }
+                } else if (opcode == 0x2 || opcode == 0x0) {
+                        if (payload_length + conn->message_data_length >
+                            FV_PROTO_MAX_MESSAGE_SIZE) {
+                                fv_log("Client %s sent a message (0x%x) "
+                                       "that is too long (%u)",
+                                       conn->remote_address_string,
+                                       opcode,
+                                       payload_length);
+                                set_error_state(conn);
+                                return;
+                        }
+                        if (opcode == 0x0 && conn->message_data_length == 0) {
+                                fv_log("Client %s sent a continuation frame "
+                                       "without starting a message",
+                                       conn->remote_address_string);
+                                return;
+                        }
+                        if (payload_length == 0 && !is_fin) {
+                                fv_log("Client %s sent an empty fragmented "
+                                       "message",
+                                       conn->remote_address_string);
+                                set_error_state(conn);
+                                return;
+                        }
+                } else {
+                        fv_log("Client %s sent a frame opcode (0x%x) which "
+                               "the server doesn't understand",
+                               conn->remote_address_string,
+                               opcode);
+                        set_error_state(conn);
+                }
+
+                if (payload_length + 2 + (has_mask ? sizeof mask : 0) > length)
                         break;
 
-                if (!process_command(conn, data))
-                        return;
+                data += 2;
+                length -= 2;
 
-                data += payload_length + FV_PROTO_HEADER_SIZE;
-                length -= payload_length + FV_PROTO_HEADER_SIZE;
+                if (has_mask) {
+                        memcpy(&mask, data, sizeof mask);
+                        data += sizeof mask;
+                        length -= sizeof mask;
+                        unmask_data(mask, data, payload_length);
+                }
+
+                if (opcode & 0x8) {
+                        if (!process_control_frame(conn,
+                                                   opcode,
+                                                   data,
+                                                   payload_length))
+                                return;
+                } else {
+                        memcpy(conn->message_data + conn->message_data_length,
+                               data,
+                               payload_length);
+                        conn->message_data_length += payload_length;
+
+                        if (is_fin && !process_message(conn))
+                                return;
+
+                        conn->message_data_length = 0;
+                }
+
+                data += payload_length;
+                length -= payload_length;
         }
 
         memmove(conn->read_buf, data, length);
         conn->read_buf_pos = length;
-}
-
-static void
-handle_ws_data(struct fv_connection *conn,
-               const uint8_t *data,
-               size_t length)
-{
-        struct fv_error *error = NULL;
-        bool ret;
-
-        ret = fv_ws_parser_parse_data(conn->ws_parser,
-                                      data,
-                                      length,
-                                      &error);
-
-        if (ret) {
-                process_commands(conn);
-        } else {
-                if (error->domain != &fv_ws_parser_error ||
-                    error->code != FV_WS_PARSER_ERROR_CANCELLED) {
-                        fv_log("WebSocket protocol error from %s: %s",
-                               conn->remote_address_string,
-                               error->message);
-                        set_error_state(conn);
-                }
-
-                fv_error_free(error);
-        }
 }
 
 static ssize_t
@@ -608,9 +711,8 @@ ws_header_received_cb(const char *field_name,
 }
 
 static bool
-ws_headers_finished_cb(void *user_data)
+ws_headers_finished(struct fv_connection *conn)
 {
-        struct fv_connection *conn = user_data;
         uint8_t sha1_hash[SHA1_DIGEST_LENGTH];
         size_t encoded_size;
 
@@ -664,103 +766,58 @@ ws_headers_finished_cb(void *user_data)
         return true;
 }
 
-static bool
-ws_data_received_cb(const uint8_t *data,
-                    unsigned int length,
-                    void *user_data)
-{
-        struct fv_connection *conn = user_data;
-
-        assert(length + conn->read_buf_pos <= sizeof conn->read_buf);
-
-        memcpy(conn->read_buf + conn->read_buf_pos, data, length);
-
-        conn->read_buf_pos += length;
-
-        return true;
-}
-
 static const struct fv_ws_parser_vtable
 ws_parser_vtable = {
         .request_line_received = ws_request_line_received_cb,
-        .header_received = ws_header_received_cb,
-        .headers_finished = ws_headers_finished_cb,
-        .data_received = ws_data_received_cb
+        .header_received = ws_header_received_cb
 };
 
 static void
-handle_ws_read(struct fv_connection *conn)
+handle_ws_data(struct fv_connection *conn,
+               size_t got)
 {
-        uint8_t *tmp_buffer;
-        size_t tmp_buffer_size;
-        int got;
+        struct fv_error *error = NULL;
+        enum fv_ws_parser_result result;
+        size_t consumed;
 
-        /* If we are filtering through a WebSocket protocol parser
-         * then we'll read into a temporary stack-allocated buffer
-         * instead. It doesn't matter that this is a throw-away buffer
-         * because the fv_ws_http_parser will preserve any state that
-         * it needs. The connection's read buffer will be used to
-         * store the data emitted by the parser.
-         *
-         * The maximum size of a command is restricted to fit within
-         * the read buffer plus the size of a frame header. That means
-         * if we always read an amount at most the size of the
-         * remaining buffer space minus the maximum frame header size
-         * then the parsed data will never overflow the buffer. We
-         * should always have processed a command and moved it out of
-         * the way before the buffer is too full to fit the maximum
-         * header size.
-         */
-        assert(conn->read_buf_pos + FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH <=
-               sizeof conn->read_buf);
+        result = fv_ws_parser_parse_data(conn->ws_parser,
+                                         conn->read_buf,
+                                         got,
+                                         &consumed,
+                                         &error);
 
-        tmp_buffer_size = (sizeof conn->read_buf -
-                           FV_WS_PARSER_MAX_FRAME_HEADER_LENGTH -
-                           conn->read_buf_pos);
-        tmp_buffer = alloca(tmp_buffer_size);
+        switch (result) {
+        case FV_WS_PARSER_RESULT_NEED_MORE_DATA:
+                break;
+        case FV_WS_PARSER_RESULT_FINISHED:
+                fv_ws_parser_free(conn->ws_parser);
+                conn->ws_parser = NULL;
+                memmove(conn->read_buf,
+                        conn->read_buf + consumed,
+                        got - consumed);
+                conn->read_buf_pos = got - consumed;
 
-        got = repeat_read(conn->sock, tmp_buffer, tmp_buffer_size);
-
-        if (got <= 0)
-                handle_read_error(conn, got);
-        else
-                handle_ws_data(conn, tmp_buffer, got);
-}
-
-static void
-upgrade_to_websocket(struct fv_connection *conn,
-                     const uint8_t *data,
-                     size_t length)
-{
-        uint8_t *tmp_buffer;
-
-        /* Copy the data to a temporary buffer so that parsing the
-         * data can't cause the read buffer to be written. This
-         * probably shouldn't happen anyway because the client would
-         * have to have send data without waiting for the WebSocket
-         * response, but we don't want it to confuse the parser if a
-         * malicious client did this.
-         */
-        tmp_buffer = alloca(length);
-        memcpy(tmp_buffer, data, length);
-
-        conn->ws_parser = fv_alloc(sizeof *conn->ws_parser);
-        fv_ws_parser_init(conn->ws_parser,
-                          &ws_parser_vtable,
-                          conn);
-
-        handle_ws_data(conn, tmp_buffer, length);
+                if (ws_headers_finished(conn))
+                        process_frames(conn);
+                break;
+        case FV_WS_PARSER_RESULT_ERROR:
+                if (error->domain != &fv_ws_parser_error ||
+                    error->code != FV_WS_PARSER_ERROR_CANCELLED) {
+                        fv_log("WebSocket protocol error from %s: %s",
+                               conn->remote_address_string,
+                               error->message);
+                        set_error_state(conn);
+                }
+                fv_error_free(error);
+                break;
+        }
 }
 
 static void
 handle_read(struct fv_connection *conn)
 {
+        uint64_t now;
         ssize_t got;
-
-        if (conn->ws_parser) {
-                handle_ws_read(conn);
-                return;
-        }
 
         got = repeat_read(conn->sock,
                           conn->read_buf + conn->read_buf_pos,
@@ -769,20 +826,19 @@ handle_read(struct fv_connection *conn)
         if (got <= 0) {
                 handle_read_error(conn, got);
         } else {
-                /* If this is the first command and it looks like it
-                 * might be a WebSocket header then we'll upgrade to
-                 * filtering it through a WebSocket parser.
-                 */
-                if (conn->player == NULL &&
-                    conn->ws_parser == NULL &&
-                    conn->read_buf_pos == 0 &&
-                    got >= 3 &&
-                    !memcmp(conn->read_buf, "GET", 3)) {
-                        upgrade_to_websocket(conn, conn->read_buf, got);
+                now = fv_main_context_get_monotonic_clock(NULL);
+
+                conn->last_update_time = now;
+
+                if (conn->player)
+                        conn->player->last_update_time = now;
+
+                if (conn->ws_parser) {
+                        handle_ws_data(conn, got);
                 } else {
                         conn->read_buf_pos += got;
 
-                        process_commands(conn);
+                        process_frames(conn);
                 }
         }
 }
@@ -871,6 +927,9 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
         conn->player = NULL;
         conn->ws_parser = NULL;
         conn->sha1_ctx = NULL;
+        conn->pong_queued = false;
+        conn->message_data_length = 0;
+        conn->ws_parser = fv_ws_parser_new(&ws_parser_vtable, conn);
 
         fv_signal_init(&conn->event_signal);
 

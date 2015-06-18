@@ -24,55 +24,106 @@
 #include "config.h"
 
 #include <stdarg.h>
+#include <assert.h>
 
 #include "fv-proto.h"
 
-#define WRITE_TYPE_AP(enum_name, type_name, ap_type_name)               \
-        case enum_name:                                                 \
-        if ((size_t) pos + sizeof (type_name ## _t) > buffer_length)    \
-                return -1;                                              \
-                                                                        \
-        fv_proto_write_ ## type_name(buffer + pos,                      \
-                                     va_arg(ap, ap_type_name));         \
-        pos += sizeof (type_name ## _t);                                \
-                                                                        \
-        break
+#define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)       \
+        case enum_name:                                         \
+        payload_length += sizeof (type_name);                   \
+        va_arg(ap, ap_type_name);                               \
+        break;
 
-#define WRITE_TYPE(enum_name, type_name)                                \
-        WRITE_TYPE_AP(enum_name, type_name, type_name ## _t)
-
-ssize_t
-fv_proto_write_command_v(uint8_t *buffer,
-                         size_t buffer_length,
-                         uint16_t command,
-                         va_list ap)
+static size_t
+get_payload_length(va_list ap)
 {
-        ssize_t pos = FV_PROTO_HEADER_SIZE;
-
-        if (buffer_length < (size_t) pos)
-                return -1;
-
-        fv_proto_write_uint16(buffer, command);
+        /* The payload always at least includes the message ID */
+        size_t payload_length = 1;
 
         while (true) {
                 switch (va_arg(ap, enum fv_proto_type)) {
-                        WRITE_TYPE_AP(FV_PROTO_TYPE_UINT16, uint16,
-                                      unsigned int);
-                        WRITE_TYPE(FV_PROTO_TYPE_UINT32, uint32);
-                        WRITE_TYPE(FV_PROTO_TYPE_UINT64, uint64);
+#include "fv-proto-types.h"
 
                 case FV_PROTO_TYPE_NONE:
-                        fv_proto_write_uint16(buffer + sizeof (uint16_t),
-                                              pos - FV_PROTO_HEADER_SIZE);
-                        return pos;
+                        return payload_length;
                 }
         }
 }
 
+#undef FV_PROTO_TYPE
+
+#define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)               \
+        case enum_name:                                                 \
+        fv_proto_write_ ## type_name(buffer + pos,                      \
+                                     va_arg(ap, ap_type_name));         \
+        pos += sizeof (type_name);                                      \
+                                                                        \
+        break;
+
+ssize_t
+fv_proto_write_command_v(uint8_t *buffer,
+                         size_t buffer_length,
+                         uint8_t command,
+                         va_list ap)
+{
+        ssize_t pos;
+        size_t payload_length = 0;
+        size_t frame_header_length;
+        va_list ap_copy;
+
+        va_copy(ap_copy, ap);
+        payload_length = get_payload_length(ap_copy);
+        va_end(ap_copy);
+
+        frame_header_length = 2;
+        if (payload_length > 0xffff)
+                frame_header_length += sizeof (uint64_t);
+        else if (payload_length >= 126)
+                frame_header_length += sizeof (uint16_t);
+
+        if (frame_header_length + payload_length > buffer_length)
+                return -1;
+
+        /* opcode (2) (binary) with FIN bit set */
+        buffer[0] = 0x82;
+        if (payload_length > 0xffff) {
+                buffer[1] = 127;
+                fv_proto_write_uint64_t(buffer + 2, payload_length);
+        } else if (payload_length >= 126) {
+                buffer[1] = 126;
+                fv_proto_write_uint16_t(buffer + 2, payload_length);
+        } else {
+                buffer[1] = payload_length;
+        }
+
+        buffer[frame_header_length] = command;
+
+        pos = frame_header_length + 1;
+
+        /* Calculate the length of the payload */
+        while (true) {
+                switch (va_arg(ap, enum fv_proto_type)) {
+#include "fv-proto-types.h"
+
+                case FV_PROTO_TYPE_NONE:
+                        goto done;
+                }
+        }
+done:
+
+        va_end(ap);
+
+        assert(pos == frame_header_length + payload_length);
+
+        return pos;
+}
+
+#undef FV_PROTO_TYPE
+
 ssize_t
 fv_proto_write_command(uint8_t *buffer,
                        size_t buffer_length,
-                       uint16_t command,
+                       uint8_t command,
                        ...)
 {
         ssize_t ret;
@@ -89,42 +140,40 @@ fv_proto_write_command(uint8_t *buffer,
 
 #undef WRITE_TYPE
 
-#define READ_TYPE(enum_name, type_name)                                 \
+#define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)               \
         case enum_name:                                                 \
-        if ((size_t) pos + sizeof (type_name ## _t) > buffer_length) {  \
-                pos = -1;                                               \
+        if ((size_t) pos + sizeof (type_name) > length) {               \
+                ret = false;                                            \
                 goto done;                                              \
         }                                                               \
                                                                         \
         {                                                               \
-                type_name ## _t *val = va_arg(ap, type_name ## _t *);   \
+                type_name *val = va_arg(ap, type_name *);               \
                 *val = fv_proto_read_ ## type_name(buffer + pos);       \
         }                                                               \
                                                                         \
-        pos += sizeof (type_name ## _t);                                \
+        pos += sizeof (type_name);                                      \
                                                                         \
-        break
+        break;
 
-ssize_t
-fv_proto_read_command(const uint8_t *buffer,
+bool
+fv_proto_read_payload(const uint8_t *buffer,
+                      size_t length,
                       ...)
 {
-        uint16_t payload_length = fv_proto_get_payload_length(buffer);
-        size_t buffer_length = payload_length + FV_PROTO_HEADER_SIZE;
-        ssize_t pos = FV_PROTO_HEADER_SIZE;
+        size_t pos = 0;
+        bool ret = true;
         va_list ap;
 
-        va_start(ap, buffer);
+        va_start(ap, length);
 
         while (true) {
                 switch (va_arg(ap, enum fv_proto_type)) {
-                        READ_TYPE(FV_PROTO_TYPE_UINT16, uint16);
-                        READ_TYPE(FV_PROTO_TYPE_UINT32, uint32);
-                        READ_TYPE(FV_PROTO_TYPE_UINT64, uint64);
+#include "fv-proto-types.h"
 
                 case FV_PROTO_TYPE_NONE:
-                        if (pos != buffer_length)
-                                pos = -1;
+                        if (pos != length)
+                                ret = false;
                         goto done;
                 }
         }
@@ -132,7 +181,7 @@ fv_proto_read_command(const uint8_t *buffer,
 done:
         va_end(ap);
 
-        return pos;
+        return ret;
 }
 
-#undef READ_TYPE
+#undef FV_PROTO_TYPE
