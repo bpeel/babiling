@@ -153,6 +153,7 @@ static const uint8_t
 websocket_headers_terminator[] =
         "\r\n\r\n";
 
+#define FV_NETWORK_MIN_CONNECT_WAIT_TIME (1 * 1000)
 #define FV_NETWORK_MAX_CONNECT_WAIT_TIME (15 * 1000)
 
 #define FV_NETWORK_N_PLAYERS(nw)                                \
@@ -169,7 +170,7 @@ set_connected(struct fv_network *nw)
                 return;
 
         nw->connected = true;
-        nw->connect_wait_time = 0;
+        nw->connect_wait_time = FV_NETWORK_MIN_CONNECT_WAIT_TIME;
 
         /* As soon as the connection is established then we want to
          * write the WebSocket request header.
@@ -193,15 +194,10 @@ set_connect_error(struct fv_network *nw)
                                                 struct fv_network_host,
                                                 link);
 
-                if (nw->connect_wait_time == 0) {
-                        nw->connect_wait_time = 1000;
-                } else {
-                        nw->connect_wait_time *= 2;
-                        if (nw->connect_wait_time >
-                            FV_NETWORK_MAX_CONNECT_WAIT_TIME) {
-                                nw->connect_wait_time =
-                                        FV_NETWORK_MAX_CONNECT_WAIT_TIME;
-                        }
+                nw->connect_wait_time *= 2;
+                if (nw->connect_wait_time > FV_NETWORK_MAX_CONNECT_WAIT_TIME) {
+                        nw->connect_wait_time =
+                                FV_NETWORK_MAX_CONNECT_WAIT_TIME;
                 }
         }
 }
@@ -909,7 +905,7 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
         nw->next_host = NULL;
         nw->has_player_id = false;
         nw->last_connect_time = 0;
-        nw->connect_wait_time = 0;
+        nw->connect_wait_time = FV_NETWORK_MIN_CONNECT_WAIT_TIME;
         nw->quit = false;
         nw->player_queued = false;
 
