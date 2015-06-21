@@ -44,8 +44,8 @@ sources = \
 	fv-matrix.h \
 	fv-model.c \
 	fv-model.h \
-	fv-network.c \
 	fv-network.h \
+	fv-network-common.h \
 	fv-paint-state.h \
 	fv-person.h \
 	fv-person-painter.c \
@@ -71,10 +71,17 @@ ldadd = \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)
 
-finvenkisto_SOURCES = $(sources)
+finvenkisto_SOURCES = \
+	$(sources) \
+	fv-network-native.c \
+	$(NULL)
 finvenkisto_LDADD = $(ldadd)
 
-finvenkisto_html_SOURCES = $(sources)
+finvenkisto_html_SOURCES = \
+	$(sources) \
+	fv-network-emscripten.c \
+	$(NULL)
+
 finvenkisto_html_LDFLAGS = \
 	--pre-js $(srcdir)/configure-emscripten.js \
 	--pre-js $(builddir)/data/finvenkisto-data.js \

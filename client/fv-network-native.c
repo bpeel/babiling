@@ -30,6 +30,7 @@
 #include <string.h>
 #include <assert.h>
 #include <netdb.h>
+#include <stdarg.h>
 
 #include "fv-network.h"
 #include "fv-util.h"
@@ -39,6 +40,8 @@
 #include "fv-bitmask.h"
 #include "fv-netaddress.h"
 #include "fv-list.h"
+
+#include "fv-network-common.h"
 
 struct fv_network_host {
         struct fv_list link;
@@ -77,13 +80,18 @@ struct fv_network {
          * doesn't need the mutex
          */
 
-        fv_network_consistent_event_cb consistent_event_cb;
-        void *user_data;
-
         bool connected;
-        bool sent_hello;
-        bool has_player_id;
-        uint64_t player_id;
+
+        struct fv_network_base base;
+
+        /* Current number of milliseconds to wait before trying to
+         * connect. Doubles after each unsucessful connection up to a
+         * maximum
+         */
+        uint32_t connect_wait_time;
+        /* The last time we tried to connect in SDL ticks
+         */
+        uint32_t last_connect_time;
 
         /* Position along the websocket headers terminiator that we
          * have received so far. Once this reaches the length of
@@ -91,9 +99,6 @@ struct fv_network {
          * established and start processing messages.
          */
         uint8_t ws_terminator_pos;
-
-        bool player_dirty;
-        struct fv_person player;
 
         uint8_t read_buf[1024];
         size_t read_buf_pos;
@@ -108,27 +113,6 @@ struct fv_network {
         struct fv_list hosts;
         /* The next address that we will attempt to connect to. */
         struct fv_network_host *next_host;
-
-        /* Current number of milliseconds to wait before trying to
-         * connect. Doubles after each unsucessful connection up to a
-         * maximum
-         */
-        uint32_t connect_wait_time;
-        /* The last time we tried to connect in SDL ticks
-         */
-        uint32_t last_connect_time;
-
-        /* Array of fv_persons */
-        struct fv_buffer players;
-        /* Array of one bit for each player to mark whether it has
-         * changed since the last consistent state was reached
-         */
-        struct fv_buffer dirty_players;
-
-        /* The last time we sent any data to the server. This is used
-         * to track when we need to send a keep alive event.
-         */
-        uint32_t last_update_time;
 };
 
 /* Minimal header that the server will recognise as a WebSocket
@@ -153,15 +137,11 @@ static const uint8_t
 websocket_headers_terminator[] =
         "\r\n\r\n";
 
-#define FV_NETWORK_MIN_CONNECT_WAIT_TIME (1 * 1000)
-#define FV_NETWORK_MAX_CONNECT_WAIT_TIME (15 * 1000)
-
-#define FV_NETWORK_N_PLAYERS(nw)                                \
-        ((nw)->players.length / sizeof (struct fv_person))
-
-/* Time in milliseconds after which if no other data is sent the
- * client will send a KEEP_ALIVE message */
-#define FV_NETWORK_KEEP_ALIVE_TIME (60 * 1000)
+static struct fv_network_base *
+fv_network_get_base(struct fv_network *nw)
+{
+        return &nw->base;
+}
 
 static void
 set_connected(struct fv_network *nw)
@@ -329,12 +309,11 @@ try_connect(struct fv_network *nw)
         int ret;
         int flags;
 
+        init_new_connection(nw);
+
         nw->connected = false;
-        nw->sent_hello = false;
-        nw->player_dirty = true;
         nw->read_buf_pos = 0;
         nw->write_buf_pos = 0;
-        nw->last_update_time = SDL_GetTicks();
         nw->ws_terminator_pos = 0;
 
         if (!nw->next_host->resolved &&
@@ -367,146 +346,33 @@ error:
         set_connect_error(nw);
 }
 
-static bool
-needs_write_poll(struct fv_network *nw)
-{
-        /* If we're not connected then we'll poll for writing so that
-         * we can detect a successful connection.
-         */
-        if (!nw->connected)
-                return true;
-
-        if (!nw->sent_hello)
-                return true;
-
-        if (nw->player_dirty)
-                return true;
-
-        if (nw->write_buf_pos > 0)
-                return true;
-
-        if (nw->last_update_time + FV_NETWORK_KEEP_ALIVE_TIME <= SDL_GetTicks())
-                return true;
-
-        return false;
-}
-
-static bool
-write_new_player(struct fv_network *nw)
+static int
+write_command(struct fv_network *nw,
+              uint8_t command,
+              ...)
 {
         int res;
+        va_list ap;
 
-        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
-                                     sizeof nw->write_buf - nw->write_buf_pos,
-                                     FV_PROTO_NEW_PLAYER,
-                                     FV_PROTO_TYPE_NONE);
+        va_start(ap, command);
 
-        if (res != -1) {
-                nw->sent_hello = true;
+        res = fv_proto_write_command_v(nw->write_buf + nw->write_buf_pos,
+                                       sizeof nw->write_buf - nw->write_buf_pos,
+                                       command,
+                                       ap);
+
+        va_end(ap);
+
+        if (res != -1)
                 nw->write_buf_pos += res;
-                return true;
-        } else {
-                return false;
-        }
+
+        return res;
 }
 
 static bool
-write_reconnect(struct fv_network *nw)
+write_buf_is_empty(struct fv_network *nw)
 {
-        int res;
-
-        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
-                                     sizeof nw->write_buf - nw->write_buf_pos,
-                                     FV_PROTO_RECONNECT,
-                                     FV_PROTO_TYPE_UINT64,
-                                     nw->player_id,
-                                     FV_PROTO_TYPE_NONE);
-
-        if (res != -1) {
-                nw->sent_hello = true;
-                nw->write_buf_pos += res;
-                return true;
-        } else {
-                return false;
-        }
-}
-
-static bool
-write_player(struct fv_network *nw)
-{
-        int res;
-
-        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
-                                     sizeof nw->write_buf - nw->write_buf_pos,
-                                     FV_PROTO_UPDATE_POSITION,
-
-                                     FV_PROTO_TYPE_UINT32,
-                                     nw->player.x_position,
-
-                                     FV_PROTO_TYPE_UINT32,
-                                     nw->player.y_position,
-
-                                     FV_PROTO_TYPE_UINT16,
-                                     nw->player.direction,
-
-                                     FV_PROTO_TYPE_NONE);
-
-        if (res != -1) {
-                nw->player_dirty = false;
-                nw->write_buf_pos += res;
-                return true;
-        } else {
-                return false;
-        }
-}
-
-static bool
-write_keep_alive(struct fv_network *nw)
-{
-        int res;
-
-        res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
-                                     sizeof nw->write_buf - nw->write_buf_pos,
-                                     FV_PROTO_KEEP_ALIVE,
-
-                                     FV_PROTO_TYPE_NONE);
-
-        /* This should always succeed because it'll only be attempted
-         * if the write buffer is empty.
-         */
-        assert(res > 0);
-
-        nw->write_buf_pos += res;
-
-        return true;
-}
-
-static void
-fill_write_buf(struct fv_network *nw)
-{
-        if (!nw->sent_hello) {
-                if (nw->has_player_id) {
-                        if (!write_reconnect(nw))
-                                return;
-                } else if (!write_new_player(nw))
-                        return;
-        }
-
-        if (nw->player_dirty) {
-                if (!write_player(nw))
-                        return;
-        }
-
-        /* If nothing else writes and we haven't written for a while
-         * then add a keep alive. This should be the last thing in
-         * this function.
-         */
-        if (nw->write_buf_pos == 0 &&
-            nw->last_update_time + FV_NETWORK_KEEP_ALIVE_TIME <=
-            SDL_GetTicks()) {
-                if (!write_keep_alive(nw))
-                        return;
-        }
+        return nw->write_buf_pos == 0;
 }
 
 static bool
@@ -526,113 +392,13 @@ handle_write(struct fv_network *nw)
                 return false;
         }
 
-        nw->last_update_time = SDL_GetTicks();
+        nw->base.last_update_time = SDL_GetTicks();
 
         /* Move any unwritten data to the beginning of the buffer */
         memmove(nw->write_buf,
                 nw->write_buf + wrote,
                 nw->write_buf_pos - wrote);
         nw->write_buf_pos -= wrote;
-
-        return true;
-}
-
-static bool
-handle_player_id(struct fv_network *nw,
-                 const uint8_t *payload,
-                 size_t payload_length)
-{
-        uint64_t player_id;
-
-        if (!fv_proto_read_payload(payload,
-                                   payload_length,
-                                   FV_PROTO_TYPE_UINT64, &player_id,
-                                   FV_PROTO_TYPE_NONE)) {
-                set_socket_error(nw);
-                return false;
-        }
-
-        nw->player_id = player_id;
-        nw->has_player_id = true;
-
-        return true;
-}
-
-static bool
-handle_consistent(struct fv_network *nw,
-                  const uint8_t *payload,
-                  size_t payload_length)
-{
-        struct fv_network_consistent_event event;
-
-        if (!fv_proto_read_payload(payload,
-                                   payload_length,
-                                   FV_PROTO_TYPE_NONE)) {
-                set_socket_error(nw);
-                return false;
-        }
-
-        if (nw->consistent_event_cb) {
-                event.n_players = FV_NETWORK_N_PLAYERS(nw);
-                event.players = (const struct fv_person *) nw->players.data;
-                event.dirty_players = &nw->dirty_players;
-
-                nw->consistent_event_cb(&event, nw->user_data);
-        }
-
-        memset(nw->dirty_players.data, 0, nw->dirty_players.length);
-
-        return true;
-}
-
-static bool
-handle_n_players(struct fv_network *nw,
-                 const uint8_t *payload,
-                 size_t payload_length)
-{
-        uint16_t n_players;
-
-        if (!fv_proto_read_payload(payload,
-                                   payload_length,
-                                   FV_PROTO_TYPE_UINT16, &n_players,
-                                   FV_PROTO_TYPE_NONE)) {
-                set_socket_error(nw);
-                return false;
-        }
-
-        fv_buffer_set_length(&nw->players,
-                             sizeof (struct fv_person) * n_players);
-        fv_bitmask_set_length(&nw->dirty_players, n_players);
-
-        return true;
-}
-
-static bool
-handle_player_position(struct fv_network *nw,
-                       const uint8_t *payload,
-                       size_t payload_length)
-{
-        struct fv_person player;
-        uint16_t player_num;
-
-        if (!fv_proto_read_payload(payload,
-                                   payload_length,
-                                   FV_PROTO_TYPE_UINT16, &player_num,
-                                   FV_PROTO_TYPE_UINT32, &player.x_position,
-                                   FV_PROTO_TYPE_UINT32, &player.y_position,
-                                   FV_PROTO_TYPE_UINT16, &player.direction,
-                                   FV_PROTO_TYPE_NONE)) {
-                set_socket_error(nw);
-                return false;
-        }
-
-        if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
-                memcpy(nw->players.data +
-                       player_num * sizeof (struct fv_person),
-                       &player,
-                       sizeof player);
-                fv_bitmask_set(&nw->dirty_players, player_num, true);
-        }
 
         return true;
 }
@@ -702,32 +468,11 @@ found_terminator:
                 message_payload_length = (frame_payload_length -
                                           FV_PROTO_HEADER_SIZE);
 
-                switch (frame[2]) {
-                case FV_PROTO_PLAYER_ID:
-                        if (!handle_player_id(nw,
-                                              message_payload,
-                                              message_payload_length))
-                                return false;
-                        break;
-                case FV_PROTO_CONSISTENT:
-                        if (!handle_consistent(nw,
-                                               message_payload,
-                                               message_payload_length))
-                                return false;
-                        break;
-                case FV_PROTO_N_PLAYERS:
-                        if (!handle_n_players(nw,
-                                              message_payload,
-                                              message_payload_length))
-                                return false;
-                        break;
-                case FV_PROTO_PLAYER_POSITION:
-                        if (!handle_player_position(nw,
-                                                    message_payload,
-                                                    message_payload_length))
-                                return false;
-                        break;
-                }
+                if (!handle_message(nw,
+                                    frame[2],
+                                    message_payload,
+                                    message_payload_length))
+                        return false;
 
                 pos += frame_payload_length + 2;
         }
@@ -764,6 +509,24 @@ connect_wait_time(struct fv_network *nw)
                 return 0;
 }
 
+static bool
+needs_write_poll(struct fv_network *nw)
+{
+        if (needs_write_poll_base(nw))
+                return true;
+
+        /* If we're not connected then we'll poll for writing so that
+         * we can detect a successful connection.
+         */
+        if (!nw->connected)
+                return true;
+
+        if (nw->write_buf_pos > 0)
+                return true;
+
+        return false;
+}
+
 static int
 thread_func(void *user_data)
 {
@@ -781,9 +544,9 @@ thread_func(void *user_data)
                 quit = nw->quit;
 
                 if (nw->player_queued) {
-                        nw->player_dirty = true;
+                        nw->base.player_dirty = true;
                         nw->player_queued = false;
-                        nw->player = nw->queued_player;
+                        nw->base.player = nw->queued_player;
                 }
 
                 if (!fv_list_empty(&nw->queued_hosts)) {
@@ -827,7 +590,7 @@ thread_func(void *user_data)
                 } else if ((pollfd[1].events & POLLOUT) == 0) {
                         set_timeout_for(&timeout,
                                         FV_NETWORK_KEEP_ALIVE_TIME +
-                                        nw->last_update_time);
+                                        nw->base.last_update_time);
                 }
 
                 poll(pollfd, n_pollfds, timeout);
@@ -897,22 +660,21 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
 {
         struct fv_network *nw = fv_alloc(sizeof *nw);
 
-        nw->consistent_event_cb = consistent_event_cb;
-        nw->user_data = user_data;
+        nw->base.consistent_event_cb = consistent_event_cb;
+        nw->base.user_data = user_data;
 
         nw->sock = -1;
-        nw->connected = false;
+        nw->quit = false;
         nw->next_host = NULL;
-        nw->has_player_id = false;
+        nw->player_queued = false;
+
         nw->last_connect_time = 0;
         nw->connect_wait_time = FV_NETWORK_MIN_CONNECT_WAIT_TIME;
-        nw->quit = false;
-        nw->player_queued = false;
+
+        init_base(&nw->base);
 
         fv_list_init(&nw->queued_hosts);
         fv_list_init(&nw->hosts);
-        fv_buffer_init(&nw->players);
-        fv_buffer_init(&nw->dirty_players);
 
         if (pipe(nw->wakeup_pipe) == -1)
                 fv_fatal("Error creating pipe: %s", strerror(errno));
@@ -973,8 +735,8 @@ fv_network_free(struct fv_network *nw)
 
         SDL_DestroyMutex(nw->mutex);
 
-        fv_buffer_destroy(&nw->players);
-        fv_buffer_destroy(&nw->dirty_players);
+        destroy_base(&nw->base);
+
         free_hosts(&nw->queued_hosts);
         free_hosts(&nw->hosts);
 
