@@ -60,13 +60,13 @@ get_payload_length(va_list ap)
                                                                         \
         break;
 
-ssize_t
+int
 fv_proto_write_command_v(uint8_t *buffer,
                          size_t buffer_length,
                          uint8_t command,
                          va_list ap)
 {
-        ssize_t pos;
+        int pos;
         size_t payload_length = 0;
         size_t frame_header_length;
         va_list ap_copy;
@@ -120,13 +120,13 @@ done:
 
 #undef FV_PROTO_TYPE
 
-ssize_t
+int
 fv_proto_write_command(uint8_t *buffer,
                        size_t buffer_length,
                        uint8_t command,
                        ...)
 {
-        ssize_t ret;
+        int ret;
         va_list ap;
 
         va_start(ap, command);

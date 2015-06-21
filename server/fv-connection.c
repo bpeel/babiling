@@ -205,12 +205,12 @@ update_poll_flags(struct fv_connection *conn)
         fv_main_context_modify_poll(conn->socket_source, flags);
 }
 
-static ssize_t
+static int
 write_command(struct fv_connection *conn,
               uint16_t command,
               ...)
 {
-        ssize_t ret;
+        int ret;
         va_list ap;
 
         va_start(ap, command);
@@ -233,7 +233,7 @@ write_player_state(struct fv_connection *conn,
 {
         struct fv_player *player =
                 fv_playerbase_get_player_by_num(conn->playerbase, player_num);
-        ssize_t wrote;
+        int wrote;
         uint8_t *state = conn->dirty_players.data + player_num;
 
         /* We don't send any information about the player belonging to
@@ -282,7 +282,7 @@ write_player_state(struct fv_connection *conn,
 static bool
 write_player_id(struct fv_connection *conn)
 {
-        ssize_t wrote;
+        int wrote;
 
         wrote = write_command(conn,
 
@@ -325,7 +325,7 @@ static void
 fill_write_buf(struct fv_connection *conn)
 {
         int n_players;
-        ssize_t wrote;
+        int wrote;
         int i;
 
         if (conn->pong_queued && !write_pong(conn))

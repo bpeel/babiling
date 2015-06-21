@@ -394,7 +394,7 @@ needs_write_poll(struct fv_network *nw)
 static bool
 write_new_player(struct fv_network *nw)
 {
-        ssize_t res;
+        int res;
 
         res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
                                      sizeof nw->write_buf - nw->write_buf_pos,
@@ -413,7 +413,7 @@ write_new_player(struct fv_network *nw)
 static bool
 write_reconnect(struct fv_network *nw)
 {
-        ssize_t res;
+        int res;
 
         res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
                                      sizeof nw->write_buf - nw->write_buf_pos,
@@ -434,7 +434,7 @@ write_reconnect(struct fv_network *nw)
 static bool
 write_player(struct fv_network *nw)
 {
-        ssize_t res;
+        int res;
 
         res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
                                      sizeof nw->write_buf - nw->write_buf_pos,
@@ -463,7 +463,7 @@ write_player(struct fv_network *nw)
 static bool
 write_keep_alive(struct fv_network *nw)
 {
-        ssize_t res;
+        int res;
 
         res = fv_proto_write_command(nw->write_buf + nw->write_buf_pos,
                                      sizeof nw->write_buf - nw->write_buf_pos,
@@ -512,7 +512,7 @@ fill_write_buf(struct fv_network *nw)
 static bool
 handle_write(struct fv_network *nw)
 {
-        ssize_t wrote;
+        int wrote;
 
         fill_write_buf(nw);
 

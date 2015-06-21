@@ -90,13 +90,13 @@ fv_proto_write_uint64_t(uint8_t *buffer,
         memcpy(buffer, &value, sizeof value);
 }
 
-ssize_t
+int
 fv_proto_write_command_v(uint8_t *buffer,
                          size_t buffer_length,
                          uint8_t command,
                          va_list ap);
 
-ssize_t
+int
 fv_proto_write_command(uint8_t *buffer,
                        size_t buffer_length,
                        uint8_t command,
