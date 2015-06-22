@@ -1,9 +1,14 @@
 SUBDIRS = \
 	common \
 	client \
-	server \
 	doc \
 	$(NULL)
+
+if !IS_EMSCRIPTEN
+SUBDIRS += \
+	server \
+	$(NULL)
+endif
 
 EXTRA_DIST = \
 	LEGUMIN.txt \
