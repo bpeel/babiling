@@ -132,10 +132,12 @@ struct data {
         struct player players[FV_LOGIC_MAX_PLAYERS];
 
         bool redraw_queued;
+
+#ifndef EMSCRIPTEN
+
         /* Event that is sent asynchronously to queue a redraw */
         Uint32 redraw_user_event;
 
-#ifndef EMSCRIPTEN
         /* This is a cache of the NPC state that is updated
          * asynchronously. It is copied into the fv_logic just before
          * updating it. It is always accessed with the mutex locked.
@@ -145,8 +147,26 @@ struct data {
         struct fv_buffer npcs;
         /* Bitmask with a bit for each npc */
         struct fv_buffer dirty_npcs;
-#endif
+
+#endif /* EMSCRIPTEN */
 };
+
+static void
+queue_redraw(struct data *data)
+{
+#ifdef EMSCRIPTEN
+
+        if (data->redraw_queued)
+                return;
+
+        emscripten_resume_main_loop();
+
+        data->last_update_time = SDL_GetTicks();
+
+#endif /* EMSCRIPTEN */
+
+        data->redraw_queued = true;
+}
 
 static void
 reset_menu_state(struct data *data)
@@ -160,7 +180,8 @@ reset_menu_state(struct data *data)
         data->n_players = 1;
         data->next_player = 0;
         data->next_key = 0;
-        data->redraw_queued = true;
+
+        queue_redraw(data);
 
         for (i = 0; i < FV_LOGIC_MAX_PLAYERS; i++) {
                 for (j = 0; j < N_KEYS; j++) {
@@ -190,7 +211,7 @@ toggle_fullscreen(struct data *data)
         SDL_SetWindowDisplayMode(data->window, &mode);
 
         data->is_fullscreen = !data->is_fullscreen;
-        data->redraw_queued = true;
+        queue_redraw(data);
 
         SDL_SetWindowFullscreen(data->window, data->is_fullscreen);
 }
@@ -282,7 +303,7 @@ set_key(struct data *data,
 {
         data->players[data->next_player].keys[data->next_key] = *other_key;
         data->next_key++;
-        data->redraw_queued = true;
+        queue_redraw(data);
 
         if (data->next_key >= N_KEYS) {
                 data->next_player++;
@@ -311,7 +332,7 @@ set_key_state(struct data *data,
 
         update_direction(data, player_num);
 
-        data->redraw_queued = true;
+        queue_redraw(data);
 }
 
 static void
@@ -488,7 +509,7 @@ handle_event(struct data *data,
                         data->quit = true;
                         break;
                 case SDL_WINDOWEVENT_EXPOSED:
-                        data->redraw_queued = true;
+                        queue_redraw(data);
                         break;
                 }
                 goto handled;
@@ -521,10 +542,12 @@ handle_event(struct data *data,
                 goto handled;
         }
 
+#ifndef EMSCRIPTEN
         if (event->type == data->redraw_user_event) {
-                data->redraw_queued = true;
+                queue_redraw(data);
                 goto handled;
         }
+#endif
 
 handled:
         (void) 0;
@@ -738,12 +761,15 @@ paint(struct data *data)
 
         SDL_GL_SwapWindow(data->window);
 
-        /* If the logic hasn't become stable then we'll queue another
-         * redraw immediately so that we'll continue updating the
-         * logic.
+        /* If the logic has become stable then we'll stop redrawing
+         * until something changes.
          */
-        if (state_change == 0)
+        if (state_change == 0) {
+#ifdef EMSCRIPTEN
+                emscripten_pause_main_loop();
+#endif
                 data->redraw_queued = false;
+        }
 }
 
 #ifdef EMSCRIPTEN
@@ -753,7 +779,6 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
                     void *user_data)
 {
         struct data *data = user_data;
-        SDL_Event redraw_event = { .type = data->redraw_user_event };
         int player_num;
 
         fv_logic_set_n_npcs(data->logic, event->n_players);
@@ -764,7 +789,7 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
                                     &event->players[player_num]);
         }
 
-        SDL_PushEvent(&redraw_event);
+        queue_redraw(data);
 }
 
 #else /* EMSCRIPTEN */
@@ -976,18 +1001,26 @@ add_server_addresses(struct data *data)
 }
 
 #ifdef EMSCRIPTEN
+
 static void
 emscripten_loop_cb(void *user_data)
 {
         struct data *data = user_data;
-        SDL_Event event;
-
-        while (SDL_PollEvent(&event))
-                handle_event(data, &event);
 
         paint(data);
 }
-#endif /* EMSCRIPTEN */
+
+static int
+emscripten_event_filter(void *userdata,
+                        SDL_Event *event)
+{
+        handle_event(userdata, event);
+
+        /* Filter the event */
+        return 0;
+}
+
+#else /* EMSCRIPTEN */
 
 static void
 run_main_loop(struct data *data)
@@ -1009,6 +1042,8 @@ run_main_loop(struct data *data)
                         paint(data);
         }
 }
+
+#endif /* EMSCRIPTEN */
 
 int
 main(int argc, char **argv)
@@ -1038,10 +1073,10 @@ main(int argc, char **argv)
                 goto out_addresses;
         }
 
-        data.redraw_user_event = SDL_RegisterEvents(1);
         data.redraw_queued = true;
 
 #ifndef EMSCRIPTEN
+
         data.npcs_mutex = SDL_CreateMutex();
         if (data.npcs_mutex == NULL) {
                 fv_error_message("Failed to create mutex");
@@ -1051,6 +1086,9 @@ main(int argc, char **argv)
 
         fv_buffer_init(&data.npcs);
         fv_buffer_init(&data.dirty_npcs);
+
+        data.redraw_user_event = SDL_RegisterEvents(1);
+
 #endif /* EMSCRIPTEN */
 
         data.nw = fv_network_new(consistent_event_cb, &data);
@@ -1142,13 +1180,19 @@ main(int argc, char **argv)
         reset_menu_state(&data);
 
 #ifdef EMSCRIPTEN
+
+        SDL_SetEventFilter(emscripten_event_filter, &data);
+
         emscripten_set_main_loop_arg(emscripten_loop_cb,
                                      &data,
                                      0, /* fps (use browser's choice) */
                                      true /* simulate infinite loop */);
-#endif
+
+#else /* EMSCRIPTEN */
 
         run_main_loop(&data);
+
+#endif /* EMSCRIPTEN */
 
         fv_logic_free(data.logic);
 
