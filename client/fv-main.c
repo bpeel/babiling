@@ -508,6 +508,7 @@ handle_event(struct data *data,
                 case SDL_WINDOWEVENT_CLOSE:
                         data->quit = true;
                         break;
+                case SDL_WINDOWEVENT_SIZE_CHANGED:
                 case SDL_WINDOWEVENT_EXPOSED:
                         queue_redraw(data);
                         break;
