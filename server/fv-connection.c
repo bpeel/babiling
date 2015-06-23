@@ -535,7 +535,7 @@ unmask_data(uint32_t mask,
         }
 
         for (; i < buffer_length; i++)
-                buffer[i] ^= *(uint8_t *) &mask;
+                buffer[i] ^= ((uint8_t *) &mask)[i % 4];
 }
 
 static void
