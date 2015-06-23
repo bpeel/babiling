@@ -257,7 +257,7 @@ handle_new_player(struct fv_network *nw,
         uint64_t id;
 
         if (player != NULL) {
-                fv_log("Client %s multiple hello messages",
+                fv_log("Client %s sent multiple hello messages",
                        remote_address_string);
                 remove_client(nw, client);
                 return false;
@@ -289,7 +289,7 @@ handle_reconnect(struct fv_network *nw,
                 fv_connection_get_player(client->connection);
 
         if (player != NULL) {
-                fv_log("Client %s multiple hello messages",
+                fv_log("Client %s sent multiple hello messages",
                        remote_address_string);
                 remove_client(nw, client);
                 return false;
