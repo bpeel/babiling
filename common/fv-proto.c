@@ -138,8 +138,6 @@ fv_proto_write_command(uint8_t *buffer,
         return ret;
 }
 
-#undef WRITE_TYPE
-
 #define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)               \
         case enum_name:                                                 \
         if ((size_t) pos + sizeof (type_name) > length) {               \
