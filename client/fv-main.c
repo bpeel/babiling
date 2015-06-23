@@ -135,6 +135,7 @@ struct data {
         /* Event that is sent asynchronously to queue a redraw */
         Uint32 redraw_user_event;
 
+#ifndef EMSCRIPTEN
         /* This is a cache of the NPC state that is updated
          * asynchronously. It is copied into the fv_logic just before
          * updating it. It is always accessed with the mutex locked.
@@ -144,6 +145,7 @@ struct data {
         struct fv_buffer npcs;
         /* Bitmask with a bit for each npc */
         struct fv_buffer dirty_npcs;
+#endif
 };
 
 static void
@@ -650,6 +652,7 @@ need_clear(struct data *data)
 static void
 update_npcs(struct data *data)
 {
+#ifndef EMSCRIPTEN
         const struct fv_person *npcs;
         int npc_num;
 
@@ -670,6 +673,7 @@ update_npcs(struct data *data)
         memset(data->dirty_npcs.data, 0, data->dirty_npcs.length);
 
         SDL_UnlockMutex(data->npcs_mutex);
+#endif
 }
 
 static void
@@ -742,6 +746,29 @@ paint(struct data *data)
                 data->redraw_queued = false;
 }
 
+#ifdef EMSCRIPTEN
+
+static void
+consistent_event_cb(const struct fv_network_consistent_event *event,
+                    void *user_data)
+{
+        struct data *data = user_data;
+        SDL_Event redraw_event = { .type = data->redraw_user_event };
+        int player_num;
+
+        fv_logic_set_n_npcs(data->logic, event->n_players);
+
+        fv_bitmask_for_each(event->dirty_players, player_num) {
+                fv_logic_update_npc(data->logic,
+                                    player_num,
+                                    &event->players[player_num]);
+        }
+
+        SDL_PushEvent(&redraw_event);
+}
+
+#else /* EMSCRIPTEN */
+
 static void
 consistent_event_cb(const struct fv_network_consistent_event *event,
                     void *user_data)
@@ -768,6 +795,8 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
 
         SDL_UnlockMutex(data->npcs_mutex);
 }
+
+#endif /* EMSCRIPTEN */
 
 static bool
 check_gl_version(void)
@@ -1012,6 +1041,7 @@ main(int argc, char **argv)
         data.redraw_user_event = SDL_RegisterEvents(1);
         data.redraw_queued = true;
 
+#ifndef EMSCRIPTEN
         data.npcs_mutex = SDL_CreateMutex();
         if (data.npcs_mutex == NULL) {
                 fv_error_message("Failed to create mutex");
@@ -1021,6 +1051,7 @@ main(int argc, char **argv)
 
         fv_buffer_init(&data.npcs);
         fv_buffer_init(&data.dirty_npcs);
+#endif /* EMSCRIPTEN */
 
         data.nw = fv_network_new(consistent_event_cb, &data);
 
@@ -1133,11 +1164,15 @@ main(int argc, char **argv)
         SDL_DestroyWindow(data.window);
  out_network:
         fv_network_free(data.nw);
+#ifndef EMSCRIPTEN
         fv_buffer_destroy(&data.npcs);
         fv_buffer_destroy(&data.dirty_npcs);
         SDL_DestroyMutex(data.npcs_mutex);
+#endif /* EMSCRIPTEN */
         close_joysticks(&data);
+#ifndef EMSCRIPTEN
  out_sdl:
+#endif /* EMSCRIPTEN */
         SDL_Quit();
  out_addresses:
         fv_buffer_destroy(&data.server_addresses);
