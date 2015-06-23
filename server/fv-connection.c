@@ -484,6 +484,21 @@ handle_update_position(struct fv_connection *conn)
 }
 
 static bool
+handle_keep_alive(struct fv_connection *conn)
+{
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
+                                   FV_PROTO_TYPE_NONE)) {
+                fv_log("Invalid keep alive command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return true;
+}
+
+static bool
 process_message(struct fv_connection *conn)
 {
         switch (conn->message_data[0]) {
@@ -493,6 +508,8 @@ process_message(struct fv_connection *conn)
                 return handle_reconnect(conn);
         case FV_PROTO_UPDATE_POSITION:
                 return handle_update_position(conn);
+        case FV_PROTO_KEEP_ALIVE:
+                return handle_keep_alive(conn);
         }
 
         fv_log("Client %s sent an unknown message ID (0x%u)",
