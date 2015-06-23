@@ -54,9 +54,12 @@ struct fv_network {
          * in order to make it write straight away. If some writing is
          * done but the buffer becomes full this will be added with a
          * larger timeout so that it will wait for a while before
-         * trying again.
+         * trying again. Otherwise if no other data currently needs to
+         * be written then a larger timeout will be installed in order
+         * to send a keep alive message.
          */
         int write_timeout_id;
+        bool write_timeout_is_keep_alive;
 
         /* Similar timeout for connecting */
         int connect_timeout_id;
@@ -133,13 +136,15 @@ cancel_write_timeout(struct fv_network *nw)
 
 static void
 install_write_timeout(struct fv_network *nw,
-                      int delay)
+                      int delay,
+                      bool is_keep_alive)
 {
         nw->write_timeout_id = EM_ASM_INT({
                         return window.setTimeout(_fv_network_write_timeout_cb,
                                                  $1,
                                                  $0);
                 }, nw, delay);
+        nw->write_timeout_is_keep_alive = is_keep_alive;
 }
 
 static bool
@@ -155,10 +160,24 @@ static void
 update_write_timeout(struct fv_network *nw)
 {
         if (needs_write_poll(nw)) {
-                if (nw->write_timeout_id == -1)
-                        install_write_timeout(nw, 0 /* delay */);
-        } else {
+                if (nw->write_timeout_id == -1 ||
+                    nw->write_timeout_is_keep_alive) {
+                        cancel_write_timeout(nw);
+                        install_write_timeout(nw,
+                                              0, /* delay */
+                                              false /* is_keep_alive */);
+                }
+        } else if (!nw->connected) {
                 cancel_write_timeout(nw);
+        } else if (nw->write_timeout_id == -1 ||
+                   !nw->write_timeout_is_keep_alive) {
+                cancel_write_timeout(nw);
+                install_write_timeout(nw,
+                                      nw->base.last_update_time +
+                                      FV_NETWORK_KEEP_ALIVE_TIME -
+                                      SDL_GetTicks() +
+                                      1,
+                                      true /* is_keep_alive */);
         }
 }
 
@@ -355,8 +374,13 @@ fv_network_write_timeout_cb(struct fv_network *nw)
          * been too full so we'll requeue the timeout in order to try
          * again after a short delay.
          */
-        if (needs_write_poll(nw))
-                install_write_timeout(nw, 17);
+        if (needs_write_poll(nw)) {
+                install_write_timeout(nw,
+                                      17, /* delay */
+                                      false /* is_keep_alive */);
+        } else {
+                update_write_timeout(nw);
+        }
 }
 
 struct fv_network *
