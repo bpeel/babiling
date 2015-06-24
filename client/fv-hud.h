@@ -35,12 +35,6 @@ fv_hud_paint_key_select(struct fv_hud *hud,
                         int n_players);
 
 void
-fv_hud_paint_game_state(struct fv_hud *hud,
-                        int screen_width,
-                        int screen_height,
-                        struct fv_logic *logic);
-
-void
 fv_hud_free(struct fv_hud *hud);
 
 #endif /* FV_HUD_H */
