@@ -68,29 +68,69 @@ enum key_code {
         KEY_CODE_RIGHT
 };
 
-#define N_KEYS 4
-
-enum key_type {
-        KEY_TYPE_KEYBOARD,
-        KEY_TYPE_JOYSTICK,
-        KEY_TYPE_MOUSE
+struct key_mapping {
+        enum key_code code;
+        SDL_Keycode sym;
 };
 
-struct key {
-        enum key_type type;
-        SDL_Keycode keycode;
-        SDL_JoystickID device_id;
-        Uint8 button;
-        bool down;
+struct button_mapping {
+        enum key_code code;
+        uint8_t button;
 };
 
 struct player {
-        struct key keys[N_KEYS];
+        uint32_t key_state;
 
         int viewport_x, viewport_y;
         int viewport_width, viewport_height;
         float center_x, center_y;
 };
+
+struct joystick {
+        SDL_Joystick *joystick;
+        SDL_JoystickID id;
+        uint32_t button_state;
+};
+
+static const struct key_mapping
+key_mappings[] = {
+        { KEY_CODE_UP, SDLK_w },
+        { KEY_CODE_DOWN, SDLK_s },
+        { KEY_CODE_LEFT, SDLK_a },
+        { KEY_CODE_RIGHT, SDLK_d },
+        { KEY_CODE_UP, SDLK_UP },
+        { KEY_CODE_DOWN, SDLK_DOWN },
+        { KEY_CODE_LEFT, SDLK_LEFT },
+        { KEY_CODE_RIGHT, SDLK_RIGHT },
+};
+
+_Static_assert(FV_N_ELEMENTS(key_mappings) <= sizeof (uint32_t) * 8,
+               "There are too many key mappings to store the state "
+               "in a uint32_t");
+
+/* The buttons are taken from the W3C gamepad API standard gamepad
+ * mapping.
+ */
+static const struct button_mapping
+button_mappings[] = {
+        /* These are the keys that SDL reports for a PS3 controller on
+         * Linux. I'm not sure if this is a standard mapping.
+         */
+        /* D-pad */
+        { KEY_CODE_UP, 4 },
+        { KEY_CODE_DOWN, 6 },
+        { KEY_CODE_LEFT, 7 },
+        { KEY_CODE_RIGHT, 5 },
+        /* Shape buttons */
+        { KEY_CODE_UP, 12 },
+        { KEY_CODE_DOWN, 14 },
+        { KEY_CODE_LEFT, 15 },
+        { KEY_CODE_RIGHT, 13 },
+};
+
+_Static_assert(FV_N_ELEMENTS(button_mappings) <= sizeof (uint32_t) * 8,
+               "There are too many button mappings to store the state "
+               "in a uint32_t");
 
 enum menu_state {
         MENU_STATE_CHOOSING_KEYS,
@@ -124,8 +164,6 @@ struct data {
 
         enum menu_state menu_state;
         int n_players;
-        int next_player;
-        enum key_code next_key;
 
         struct fv_buffer joysticks;
 
@@ -171,24 +209,13 @@ queue_redraw(struct data *data)
 static void
 reset_menu_state(struct data *data)
 {
-        int i, j;
-
         data->menu_state = MENU_STATE_CHOOSING_KEYS;
         data->last_update_time = SDL_GetTicks();
         data->viewports_dirty = true;
         data->n_viewports = 1;
         data->n_players = 1;
-        data->next_player = 0;
-        data->next_key = 0;
 
         queue_redraw(data);
-
-        for (i = 0; i < FV_LOGIC_MAX_PLAYERS; i++) {
-                for (j = 0; j < N_KEYS; j++) {
-                        data->players[i].keys[j].down = false;
-                        data->players[i].keys[j].down = false;
-                }
-        }
 
         fv_logic_reset(data->logic, 0);
 }
@@ -222,19 +249,34 @@ update_direction(struct data *data,
                  int player_num)
 {
         const struct player *player = data->players + player_num;
+        struct joystick *joystick;
         float direction;
         bool moving = true;
         int pressed_keys = 0;
         int key_mask;
+        int i, j;
 
-        if (player->keys[KEY_CODE_UP].down)
-                pressed_keys |= 1 << KEY_CODE_UP;
-        if (player->keys[KEY_CODE_DOWN].down)
-                pressed_keys |= 1 << KEY_CODE_DOWN;
-        if (player->keys[KEY_CODE_LEFT].down)
-                pressed_keys |= 1 << KEY_CODE_LEFT;
-        if (player->keys[KEY_CODE_RIGHT].down)
-                pressed_keys |= 1 << KEY_CODE_RIGHT;
+        for (i = 0; i < FV_N_ELEMENTS(key_mappings); i++) {
+                if ((player->key_state & (1 << i)))
+                        pressed_keys |= 1 << key_mappings[i].code;
+        }
+
+        for (i = 0;
+             i < data->joysticks.length / sizeof (struct joystick);
+             i++)  {
+                joystick = (struct joystick *) data->joysticks.data + i;
+
+                for (j = 0; j < FV_N_ELEMENTS(button_mappings); j++) {
+                        if (joystick->button_state & (1 << j))
+                                pressed_keys |= 1 << button_mappings[j].code;
+                }
+        }
+
+        if (pressed_keys && data->menu_state == MENU_STATE_CHOOSING_KEYS) {
+                data->menu_state = MENU_STATE_PLAYING;
+                data->last_update_time = SDL_GetTicks();
+                fv_logic_reset(data->logic, data->n_players);
+        }
 
         /* Cancel out directions where opposing keys are pressed */
         key_mask = ((pressed_keys & 10) >> 1) ^ (pressed_keys & 5);
@@ -273,127 +315,28 @@ update_direction(struct data *data,
         }
 
         fv_logic_set_direction(data->logic, player_num, moving, direction);
-}
-
-static bool
-is_key(const struct key *key,
-       const struct key *other_key)
-{
-        if (key->type != other_key->type)
-                return false;
-
-        switch (key->type) {
-        case KEY_TYPE_KEYBOARD:
-                return key->keycode == other_key->keycode;
-
-        case KEY_TYPE_JOYSTICK:
-        case KEY_TYPE_MOUSE:
-                return (key->device_id == other_key->device_id &&
-                        key->button == other_key->button);
-        }
-
-        assert(false);
-
-        return false;
-}
-
-static void
-set_key(struct data *data,
-        const struct key *other_key)
-{
-        data->players[data->next_player].keys[data->next_key] = *other_key;
-        data->next_key++;
-        queue_redraw(data);
-
-        if (data->next_key >= N_KEYS) {
-                data->next_player++;
-                data->next_key = 0;
-
-                if (data->next_player >= data->n_players) {
-                        data->menu_state = MENU_STATE_PLAYING;
-                        data->last_update_time = SDL_GetTicks();
-                        fv_logic_reset(data->logic, data->n_players);
-                }
-        }
-}
-
-static void
-set_key_state(struct data *data,
-              int player_num,
-              enum key_code key,
-              bool state)
-{
-        bool old_state = data->players[player_num].keys[key].down;
-
-        if (old_state == state)
-                return;
-
-        data->players[player_num].keys[key].down = state;
-
-        update_direction(data, player_num);
 
         queue_redraw(data);
-}
-
-static void
-handle_key(struct data *data,
-           const struct key *key)
-{
-        struct key *player_key;
-        int i, j;
-
-        switch (data->menu_state) {
-        case MENU_STATE_CHOOSING_KEYS:
-                for (i = 0; i < data->next_player; i++) {
-                        for (j = 0; j < N_KEYS; j++) {
-                                player_key = data->players[i].keys + j;
-                                if (is_key(player_key, key)) {
-                                        set_key_state(data, i, j, key->down);
-                                        goto handled;
-                                }
-                        }
-                }
-
-                for (j = 0; j < data->next_key; j++) {
-                        player_key = data->players[i].keys + j;
-                        if (is_key(player_key, key)) {
-                                set_key_state(data, i, j, key->down);
-                                goto handled;
-                        }
-                }
-
-                if (key->down)
-                        set_key(data, key);
-
-        handled:
-                break;
-
-        case MENU_STATE_PLAYING:
-                for (i = 0; i < data->n_players; i++) {
-                        for (j = 0; j < N_KEYS; j++) {
-                                player_key = data->players[i].keys + j;
-                                if (is_key(player_key, key)) {
-                                        set_key_state(data, i, j, key->down);
-                                        goto found;
-                                }
-                        }
-                }
-        found:
-                break;
-        }
 }
 
 static void
 handle_other_key(struct data *data,
                  const SDL_KeyboardEvent *event)
 {
-        struct key key;
+        int i;
 
-        key.type = KEY_TYPE_KEYBOARD;
-        key.keycode = event->keysym.sym;
-        key.down = event->state == SDL_PRESSED;
+        for (i = 0; i < FV_N_ELEMENTS(key_mappings); i++) {
+                if (key_mappings[i].sym == event->keysym.sym) {
+                        if (event->state == SDL_PRESSED)
+                                data->players[0].key_state |= 1 << i;
+                        else
+                                data->players[0].key_state &= ~(1 << i);
 
-        handle_key(data, &key);
+                        update_direction(data, 0);
+
+                        break;
+                }
+        }
 }
 
 static void
@@ -427,14 +370,34 @@ static void
 handle_joystick_button(struct data *data,
                        const SDL_JoyButtonEvent *event)
 {
-        struct key key;
+        struct joystick *joystick = NULL;
+        int i;
 
-        key.type = KEY_TYPE_JOYSTICK;
-        key.device_id = event->which;
-        key.button = event->button;
-        key.down = event->state == SDL_PRESSED;
+        for (i = 0;
+             i < data->joysticks.length / sizeof (struct joystick);
+             i++)  {
+                joystick = (struct joystick *) data->joysticks.data + i;
 
-        handle_key(data, &key);
+                if (joystick->id == event->which)
+                        goto found_joystick;
+        }
+
+        return;
+
+found_joystick:
+
+        for (i = 0; i < FV_N_ELEMENTS(button_mappings); i++) {
+                if (button_mappings[i].button == event->button) {
+                        if (event->state == SDL_PRESSED)
+                                joystick->button_state |= 1 << i;
+                        else
+                                joystick->button_state &= ~(1 << i);
+
+                        update_direction(data, 0);
+
+                        break;
+                }
+        }
 }
 
 static void
@@ -442,8 +405,10 @@ handle_joystick_added(struct data *data,
                       const SDL_JoyDeviceEvent *event)
 {
         SDL_Joystick *joystick = SDL_JoystickOpen(event->which);
-        SDL_Joystick **joysticks = (SDL_Joystick **) data->joysticks.data;
-        int n_joysticks = data->joysticks.length / sizeof (SDL_Joystick *);
+        struct joystick *joysticks = (struct joystick *) data->joysticks.data;
+        struct joystick *new_joystick;
+        int n_joysticks = data->joysticks.length / sizeof (struct joystick);
+        SDL_JoystickID id;
         int i;
 
         if (joystick == NULL) {
@@ -453,49 +418,42 @@ handle_joystick_added(struct data *data,
                 return;
         }
 
+        id = SDL_JoystickInstanceID(joystick);
+
         /* Check if we already have this joystick open */
         for (i = 0; i < n_joysticks; i++) {
-                if (SDL_JoystickInstanceID(joysticks[i]) ==
-                    SDL_JoystickInstanceID(joystick)) {
+                if (joysticks[i].id == id) {
                         SDL_JoystickClose(joystick);
                         return;
                 }
         }
 
-        fv_buffer_append(&data->joysticks, &joystick, sizeof joystick);
+        fv_buffer_set_length(&data->joysticks,
+                             data->joysticks.length + sizeof (struct joystick));
+
+        new_joystick = (struct joystick *) data->joysticks.data + n_joysticks;
+        new_joystick->joystick = joystick;
+        new_joystick->id = id;
+        new_joystick->button_state = 0;
 }
 
 static void
 handle_joystick_removed(struct data *data,
                         const SDL_JoyDeviceEvent *event)
 {
-        SDL_Joystick **joysticks = (SDL_Joystick **) data->joysticks.data;
-        int n_joysticks = data->joysticks.length / sizeof (SDL_Joystick *);
+        struct joystick *joysticks = (struct joystick *) data->joysticks.data;
+        int n_joysticks = data->joysticks.length / sizeof (struct joystick);
         int i;
 
         for (i = 0; i < n_joysticks; i++) {
-                if (SDL_JoystickInstanceID(joysticks[i]) == event->which) {
-                        SDL_JoystickClose(joysticks[i]);
+                if (joysticks[i].id == event->which) {
+                        SDL_JoystickClose(joysticks[i].joystick);
                         if (i < n_joysticks - 1)
                                 joysticks[i] = joysticks[n_joysticks - 1];
-                        data->joysticks.length -= sizeof (SDL_Joystick *);
+                        data->joysticks.length -= sizeof (struct joystick);
                         break;
                 }
         }
-}
-
-static void
-handle_mouse_button(struct data *data,
-                    const SDL_MouseButtonEvent *event)
-{
-        struct key key;
-
-        key.type = KEY_TYPE_MOUSE;
-        key.device_id = event->which;
-        key.button = event->button;
-        key.down = event->state == SDL_PRESSED;
-
-        handle_key(data, &key);
 }
 
 static void
@@ -518,11 +476,6 @@ handle_event(struct data *data,
         case SDL_KEYDOWN:
         case SDL_KEYUP:
                 handle_key_event(data, &event->key);
-                goto handled;
-
-        case SDL_MOUSEBUTTONDOWN:
-        case SDL_MOUSEBUTTONUP:
-                handle_mouse_button(data, &event->button);
                 goto handled;
 
         case SDL_JOYBUTTONDOWN:
@@ -562,8 +515,7 @@ paint_hud(struct data *data,
         case MENU_STATE_CHOOSING_KEYS:
                 fv_hud_paint_key_select(data->hud,
                                         w, h,
-                                        data->next_player,
-                                        data->next_key,
+                                        0, 0,
                                         data->n_players);
                 break;
         case MENU_STATE_PLAYING:
@@ -574,12 +526,12 @@ paint_hud(struct data *data,
 static void
 close_joysticks(struct data *data)
 {
-        SDL_Joystick **joysticks = (SDL_Joystick **) data->joysticks.data;
-        int n_joysticks = data->joysticks.length / sizeof (SDL_Joystick *);
+        struct joystick *joysticks = (struct joystick *) data->joysticks.data;
+        int n_joysticks = data->joysticks.length / sizeof (struct joystick);
         int i;
 
         for (i = 0; i < n_joysticks; i++)
-                SDL_JoystickClose(joysticks[i]);
+                SDL_JoystickClose(joysticks[i].joystick);
 
         fv_buffer_destroy(&data->joysticks);
 }
@@ -1073,6 +1025,8 @@ main(int argc, char **argv)
                 ret = EXIT_FAILURE;
                 goto out_addresses;
         }
+
+        memset(&data.players, 0, sizeof data.players);
 
         data.redraw_queued = true;
 
