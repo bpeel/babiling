@@ -29,9 +29,6 @@
 #include "fv-map.h"
 #include "fv-buffer.h"
 
-/* Player movement speed measured in blocks per second */
-#define FV_LOGIC_PLAYER_SPEED 10.0f
-
 /* Turn speed of a person in radians per second */
 #define FV_LOGIC_TURN_SPEED (2.5f * M_PI)
 
@@ -312,13 +309,13 @@ fv_logic_update(struct fv_logic *logic,
 
 void
 fv_logic_set_direction(struct fv_logic *logic,
-                       bool moving,
+                       float speed,
                        float direction)
 {
         struct fv_logic_player *player = &logic->player;
 
-        if (moving) {
-                player->position.speed = FV_LOGIC_PLAYER_SPEED;
+        if (speed > 0.0f) {
+                player->position.speed = speed;
                 player->position.target_direction = direction;
         } else {
                 player->position.speed = 0.0f;

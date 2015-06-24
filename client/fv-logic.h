@@ -53,6 +53,9 @@ typedef void
 (* fv_logic_person_cb)(const struct fv_logic_person *person,
                        void *user_data);
 
+/* Player movement speed measured in blocks per second */
+#define FV_LOGIC_PLAYER_SPEED 10.0f
+
 struct fv_logic *
 fv_logic_new(void);
 
@@ -81,7 +84,7 @@ fv_logic_for_each_person(struct fv_logic *logic,
  */
 void
 fv_logic_set_direction(struct fv_logic *logic,
-                       bool moving,
+                       float speed,
                        float direction);
 
 void

@@ -61,6 +61,15 @@
 #define FV_GL_PROFILE SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
 #endif
 
+/* Minimum movement before we consider the joystick axis to be moving.
+ * This is 20% of the total.
+ */
+#define MIN_JOYSTICK_AXIS_MOVEMENT (32767 * 2 / 10)
+/* Maximum movement before we consider the joystick to be at full
+ * speed. This is 90% of the total.
+ */
+#define MAX_JOYSTICK_AXIS_MOVEMENT (32767 * 9 / 10)
+
 enum key_code {
         KEY_CODE_UP,
         KEY_CODE_DOWN,
@@ -82,6 +91,10 @@ struct joystick {
         SDL_Joystick *joystick;
         SDL_JoystickID id;
         uint32_t button_state;
+        int16_t x_axis;
+        int16_t y_axis;
+        float direction;
+        float speed;
 };
 
 static const struct key_mapping
@@ -233,7 +246,7 @@ update_direction(struct data *data)
 {
         struct joystick *joystick;
         float direction;
-        bool moving = true;
+        float speed = FV_LOGIC_PLAYER_SPEED;
         int pressed_keys = 0;
         int key_mask;
         int i, j;
@@ -252,11 +265,6 @@ update_direction(struct data *data)
                         if (joystick->button_state & (1 << j))
                                 pressed_keys |= 1 << button_mappings[j].code;
                 }
-        }
-
-        if (pressed_keys && data->menu_state == MENU_STATE_TITLE_SCREEN) {
-                data->menu_state = MENU_STATE_PLAYING;
-                data->last_update_time = SDL_GetTicks();
         }
 
         /* Cancel out directions where opposing keys are pressed */
@@ -290,12 +298,33 @@ update_direction(struct data *data)
                 direction = 0.0f;
                 break;
         default:
-                moving = false;
+                /* If no buttons or keys are pressed then check if any
+                 * joystick axes are moving.
+                 */
+                for (i = 0;
+                     i < data->joysticks.length / sizeof (struct joystick);
+                     i++)  {
+                        joystick = (struct joystick *) data->joysticks.data + i;
+
+                        if (joystick->speed > 0.0f) {
+                                direction = joystick->direction;
+                                speed = joystick->speed;
+                                goto found_joystick;
+                        }
+                }
+
+                speed = 0.0f;
                 direction = 0.0f;
+        found_joystick:
                 break;
         }
 
-        fv_logic_set_direction(data->logic, moving, direction);
+        if (speed > 0.0f && data->menu_state == MENU_STATE_TITLE_SCREEN) {
+                data->menu_state = MENU_STATE_PLAYING;
+                data->last_update_time = SDL_GetTicks();
+        }
+
+        fv_logic_set_direction(data->logic, speed, direction);
 
         queue_redraw(data);
 }
@@ -347,11 +376,11 @@ handle_key_event(struct data *data,
         }
 }
 
-static void
-handle_joystick_button(struct data *data,
-                       const SDL_JoyButtonEvent *event)
+static struct joystick *
+find_joystick(struct data *data,
+              SDL_JoystickID id)
 {
-        struct joystick *joystick = NULL;
+        struct joystick *joystick;
         int i;
 
         for (i = 0;
@@ -359,13 +388,22 @@ handle_joystick_button(struct data *data,
              i++)  {
                 joystick = (struct joystick *) data->joysticks.data + i;
 
-                if (joystick->id == event->which)
-                        goto found_joystick;
+                if (joystick->id == id)
+                        return joystick;
         }
 
-        return;
+        return NULL;
+}
 
-found_joystick:
+static void
+handle_joystick_button(struct data *data,
+                       const SDL_JoyButtonEvent *event)
+{
+        struct joystick *joystick = find_joystick(data, event->which);
+        int i;
+
+        if (joystick == NULL)
+                return;
 
         for (i = 0; i < FV_N_ELEMENTS(button_mappings); i++) {
                 if (button_mappings[i].button == event->button) {
@@ -382,15 +420,62 @@ found_joystick:
 }
 
 static void
+handle_joystick_axis_motion(struct data *data,
+                            const SDL_JoyAxisEvent *event)
+{
+        struct joystick *joystick;
+        int mag_squared;
+        int16_t value = event->value;
+
+        /* Ignore axes other than 0 and 1 */
+        if (event->axis & ~1)
+                return;
+
+        joystick = find_joystick(data, event->which);
+
+        if (joystick == NULL)
+                return;
+
+        if (value < -INT16_MAX)
+                value = -INT16_MAX;
+
+        if (event->axis)
+                joystick->y_axis = -value;
+        else
+                joystick->x_axis = value;
+
+        mag_squared = (joystick->y_axis * (int) joystick->y_axis +
+                       joystick->x_axis * (int) joystick->x_axis);
+
+        if (mag_squared <= (MIN_JOYSTICK_AXIS_MOVEMENT *
+                            MIN_JOYSTICK_AXIS_MOVEMENT)) {
+                joystick->direction = 0.0f;
+                joystick->speed = 0.0f;
+        } else {
+                if (mag_squared >= (MAX_JOYSTICK_AXIS_MOVEMENT *
+                                    MAX_JOYSTICK_AXIS_MOVEMENT)) {
+                        joystick->speed = FV_LOGIC_PLAYER_SPEED;
+                } else {
+                        joystick->speed = ((sqrtf(mag_squared) -
+                                            MIN_JOYSTICK_AXIS_MOVEMENT) *
+                                           FV_LOGIC_PLAYER_SPEED /
+                                           (MAX_JOYSTICK_AXIS_MOVEMENT -
+                                            MIN_JOYSTICK_AXIS_MOVEMENT));
+                }
+                joystick->direction = atan2f(joystick->y_axis,
+                                             joystick->x_axis);
+        }
+
+        update_direction(data);
+}
+
+static void
 handle_joystick_added(struct data *data,
                       const SDL_JoyDeviceEvent *event)
 {
         SDL_Joystick *joystick = SDL_JoystickOpen(event->which);
-        struct joystick *joysticks = (struct joystick *) data->joysticks.data;
-        struct joystick *new_joystick;
-        int n_joysticks = data->joysticks.length / sizeof (struct joystick);
+        struct joystick *old_joystick, *new_joystick;
         SDL_JoystickID id;
-        int i;
 
         if (joystick == NULL) {
                 fprintf(stderr, "failed to open joystick %i: %s\n",
@@ -402,20 +487,25 @@ handle_joystick_added(struct data *data,
         id = SDL_JoystickInstanceID(joystick);
 
         /* Check if we already have this joystick open */
-        for (i = 0; i < n_joysticks; i++) {
-                if (joysticks[i].id == id) {
-                        SDL_JoystickClose(joystick);
-                        return;
-                }
+        old_joystick = find_joystick(data, id);
+        if (old_joystick) {
+                SDL_JoystickClose(joystick);
+                return;
         }
 
         fv_buffer_set_length(&data->joysticks,
                              data->joysticks.length + sizeof (struct joystick));
 
-        new_joystick = (struct joystick *) data->joysticks.data + n_joysticks;
+        new_joystick = (struct joystick *) (data->joysticks.data +
+                                            data->joysticks.length -
+                                            sizeof (struct joystick));
         new_joystick->joystick = joystick;
         new_joystick->id = id;
         new_joystick->button_state = 0;
+        new_joystick->speed = 0.0f;
+        new_joystick->direction = 0.0f;
+        new_joystick->x_axis = 0;
+        new_joystick->y_axis = 0;
 }
 
 static void
@@ -462,6 +552,10 @@ handle_event(struct data *data,
         case SDL_JOYBUTTONDOWN:
         case SDL_JOYBUTTONUP:
                 handle_joystick_button(data, &event->jbutton);
+                goto handled;
+
+        case SDL_JOYAXISMOTION:
+                handle_joystick_axis_motion(data, &event->jaxis);
                 goto handled;
 
         case SDL_JOYDEVICEADDED:
