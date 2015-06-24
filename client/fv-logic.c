@@ -1,7 +1,7 @@
 /*
  * Finvenkisto
  *
- * Copyright (C) 2013, 2014 Neil Roberts
+ * Copyright (C) 2013, 2014, 2015 Neil Roberts
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,9 +45,6 @@
  * this diameter */
 #define FV_LOGIC_PERSON_SIZE 0.8f
 
-/* Gap between player positions at the start of the game */
-#define FV_LOGIC_PLAYER_START_GAP 2.0f
-
 struct fv_logic_position {
         float x, y;
         float current_direction;
@@ -67,50 +64,31 @@ struct fv_logic_npc {
 struct fv_logic {
         enum fv_logic_state state;
 
-        struct fv_logic_player players[FV_LOGIC_MAX_PLAYERS];
-        int n_players;
+        struct fv_logic_player player;
 
         /* NPC player state. This state is not reset. Array of fv_logic_npc */
         struct fv_buffer npcs;
 };
 
-void
-fv_logic_reset(struct fv_logic *logic,
-               int n_players)
-{
-        struct fv_logic_player *player;
-        int i;
-
-        logic->n_players = n_players;
-
-        for (i = 0; i < n_players; i++) {
-                player = logic->players + i;
-                player->position.x = (FV_MAP_START_X -
-                                      (n_players - 1) *
-                                      FV_LOGIC_PLAYER_START_GAP / 2.0f +
-                                      i * FV_LOGIC_PLAYER_START_GAP);
-                player->position.y = FV_MAP_START_Y;
-                player->position.current_direction = -M_PI / 2.0f;
-                player->position.target_direction = 0.0f;
-                player->position.speed = 0.0f;
-
-                player->center_x = player->position.x;
-                player->center_y = player->position.y;
-        }
-
-        if (n_players == 0)
-                logic->state = FV_LOGIC_STATE_NO_PLAYERS;
-        else
-                logic->state = FV_LOGIC_STATE_RUNNING;
-}
-
 struct fv_logic *
 fv_logic_new(void)
 {
         struct fv_logic *logic = fv_alloc(sizeof *logic);
+        struct fv_logic_player *player = &logic->player;
 
         fv_buffer_init(&logic->npcs);
-        fv_logic_reset(logic, 0);
+
+        player = &logic->player;
+        player->position.x = FV_MAP_START_X;
+        player->position.y = FV_MAP_START_Y;
+        player->position.current_direction = -M_PI / 2.0f;
+        player->position.target_direction = 0.0f;
+        player->position.speed = 0.0f;
+
+        player->center_x = player->position.x;
+        player->center_y = player->position.y;
+
+        logic->state = FV_LOGIC_STATE_RUNNING;
 
         return logic;
 }
@@ -144,15 +122,11 @@ person_blocking(const struct fv_logic *logic,
         const struct fv_logic_npc *npc;
         int i;
 
-        for (i = 0; i < logic->n_players; i++) {
-                if (this_position == &logic->players[i].position)
-                        continue;
-
-                if (position_in_range(&logic->players[i].position,
-                                      x, y,
-                                      FV_LOGIC_PERSON_SIZE / 2.0f))
-                        return true;
-        }
+        if (this_position != &logic->player.position &&
+            position_in_range(&logic->player.position,
+                              x, y,
+                              FV_LOGIC_PERSON_SIZE / 2.0f))
+                return true;
 
         for (i = 0;
              i < logic->npcs.length / sizeof (struct fv_logic_npc);
@@ -297,9 +271,10 @@ update_center(struct fv_logic_player *player)
 
 static enum fv_logic_state_change
 update_player_movement(struct fv_logic *logic,
-                       struct fv_logic_player *player,
                        float progress_secs)
 {
+        struct fv_logic_player *player = &logic->player;
+
         if (!player->position.speed)
                 return false;
 
@@ -315,7 +290,6 @@ fv_logic_update(struct fv_logic *logic,
 {
         float progress_secs;
         enum fv_logic_state_change state_change = 0;
-        int i;
 
         /* If we've skipped over half a second then we'll assume something
          * has gone wrong and we won't do anything */
@@ -327,11 +301,8 @@ fv_logic_update(struct fv_logic *logic,
 
         progress_secs = progress / 1000.0f;
 
-        for (i = 0; i < logic->n_players; i++) {
-                state_change |= update_player_movement(logic,
-                                                       logic->players + i,
-                                                       progress_secs);
-        }
+        state_change |= update_player_movement(logic,
+                                               progress_secs);
 
         if (state_change)
                 state_change |= FV_LOGIC_STATE_CHANGE_ALIVE;
@@ -341,11 +312,10 @@ fv_logic_update(struct fv_logic *logic,
 
 void
 fv_logic_set_direction(struct fv_logic *logic,
-                       int player_num,
                        bool moving,
                        float direction)
 {
-        struct fv_logic_player *player = logic->players + player_num;
+        struct fv_logic_player *player = &logic->player;
 
         if (moving) {
                 player->position.speed = FV_LOGIC_PLAYER_SPEED;
@@ -395,11 +365,10 @@ fv_logic_free(struct fv_logic *logic)
 
 void
 fv_logic_get_player(struct fv_logic *logic,
-                    int player_num,
                     struct fv_person *person)
 {
         const struct fv_logic_position *pos =
-                &logic->players[player_num].position;
+                &logic->player.position;
         float direction;
 
         person->x_position = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
@@ -412,11 +381,10 @@ fv_logic_get_player(struct fv_logic *logic,
 
 void
 fv_logic_get_center(struct fv_logic *logic,
-                    int player_num,
                     float *x, float *y)
 {
-        *x = logic->players[player_num].center_x;
-        *y = logic->players[player_num].center_y;
+        *x = logic->player.center_x;
+        *y = logic->player.center_y;
 }
 
 void
@@ -431,15 +399,13 @@ fv_logic_for_each_person(struct fv_logic *logic,
 
         person.type = FV_PERSON_TYPE_FINVENKISTO;
 
-        for (i = 0; i < logic->n_players; i++) {
-                player = logic->players + i;
+        player = &logic->player;
 
-                person.x = player->position.x;
-                person.y = player->position.y;
-                person.direction = player->position.current_direction;
+        person.x = player->position.x;
+        person.y = player->position.y;
+        person.direction = player->position.current_direction;
 
-                person_cb(&person, user_data);
-        }
+        person_cb(&person, user_data);
 
         person.type = FV_PERSON_TYPE_PYJAMAS;
 
@@ -454,12 +420,6 @@ fv_logic_for_each_person(struct fv_logic *logic,
 
                 person_cb(&person, user_data);
         }
-}
-
-int
-fv_logic_get_n_players(struct fv_logic *logic)
-{
-        return logic->n_players;
 }
 
 enum fv_logic_state

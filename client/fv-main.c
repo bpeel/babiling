@@ -78,14 +78,6 @@ struct button_mapping {
         uint8_t button;
 };
 
-struct player {
-        uint32_t key_state;
-
-        int viewport_x, viewport_y;
-        int viewport_width, viewport_height;
-        float center_x, center_y;
-};
-
 struct joystick {
         SDL_Joystick *joystick;
         SDL_JoystickID id;
@@ -157,9 +149,6 @@ struct data {
         bool quit;
         bool is_fullscreen;
 
-        bool viewports_dirty;
-        int n_viewports;
-
         unsigned int last_update_time;
 
         enum menu_state menu_state;
@@ -167,7 +156,7 @@ struct data {
 
         struct fv_buffer joysticks;
 
-        struct player players[FV_LOGIC_MAX_PLAYERS];
+        uint32_t key_state;
 
         bool redraw_queued;
 
@@ -211,13 +200,8 @@ reset_menu_state(struct data *data)
 {
         data->menu_state = MENU_STATE_TITLE_SCREEN;
         data->last_update_time = SDL_GetTicks();
-        data->viewports_dirty = true;
-        data->n_viewports = 1;
-        data->n_players = 1;
 
         queue_redraw(data);
-
-        fv_logic_reset(data->logic, 0);
 }
 
 #ifndef EMSCRIPTEN
@@ -245,10 +229,8 @@ toggle_fullscreen(struct data *data)
 #endif /* EMSCRIPTEN */
 
 static void
-update_direction(struct data *data,
-                 int player_num)
+update_direction(struct data *data)
 {
-        const struct player *player = data->players + player_num;
         struct joystick *joystick;
         float direction;
         bool moving = true;
@@ -257,7 +239,7 @@ update_direction(struct data *data,
         int i, j;
 
         for (i = 0; i < FV_N_ELEMENTS(key_mappings); i++) {
-                if ((player->key_state & (1 << i)))
+                if ((data->key_state & (1 << i)))
                         pressed_keys |= 1 << key_mappings[i].code;
         }
 
@@ -275,7 +257,6 @@ update_direction(struct data *data,
         if (pressed_keys && data->menu_state == MENU_STATE_TITLE_SCREEN) {
                 data->menu_state = MENU_STATE_PLAYING;
                 data->last_update_time = SDL_GetTicks();
-                fv_logic_reset(data->logic, data->n_players);
         }
 
         /* Cancel out directions where opposing keys are pressed */
@@ -314,7 +295,7 @@ update_direction(struct data *data,
                 break;
         }
 
-        fv_logic_set_direction(data->logic, player_num, moving, direction);
+        fv_logic_set_direction(data->logic, moving, direction);
 
         queue_redraw(data);
 }
@@ -328,11 +309,11 @@ handle_other_key(struct data *data,
         for (i = 0; i < FV_N_ELEMENTS(key_mappings); i++) {
                 if (key_mappings[i].sym == event->keysym.sym) {
                         if (event->state == SDL_PRESSED)
-                                data->players[0].key_state |= 1 << i;
+                                data->key_state |= 1 << i;
                         else
-                                data->players[0].key_state &= ~(1 << i);
+                                data->key_state &= ~(1 << i);
 
-                        update_direction(data, 0);
+                        update_direction(data);
 
                         break;
                 }
@@ -393,7 +374,7 @@ found_joystick:
                         else
                                 joystick->button_state &= ~(1 << i);
 
-                        update_direction(data, 0);
+                        update_direction(data);
 
                         break;
                 }
@@ -535,95 +516,6 @@ close_joysticks(struct data *data)
 }
 
 static void
-update_viewports(struct data *data)
-{
-        int viewport_width, viewport_height;
-        int vertical_divisions = 1;
-        int i;
-
-        if (!data->viewports_dirty)
-                return;
-
-        data->n_viewports = data->n_players;
-
-        viewport_width = data->last_fb_width;
-        viewport_height = data->last_fb_height;
-
-        if (data->n_viewports > 1) {
-                viewport_width /= 2;
-                if (data->n_viewports > 2) {
-                        viewport_height /= 2;
-                        vertical_divisions = 2;
-                }
-        }
-
-        for (i = 0; i < data->n_viewports; i++) {
-                data->players[i].viewport_x = i % 2 * viewport_width;
-                data->players[i].viewport_y = (vertical_divisions - 1 -
-                                               i / 2) * viewport_height;
-                data->players[i].viewport_width = viewport_width;
-                data->players[i].viewport_height = viewport_height;
-        }
-
-        data->viewports_dirty = false;
-}
-
-static void
-update_centers(struct data *data)
-{
-        int i;
-
-        if (data->menu_state == MENU_STATE_PLAYING) {
-                for (i = 0; i < data->n_viewports; i++) {
-                        fv_logic_get_center(data->logic,
-                                            i,
-                                            &data->players[i].center_x,
-                                            &data->players[i].center_y);
-                }
-        } else {
-                for (i = 0; i < data->n_viewports; i++) {
-                        data->players[i].center_x = FV_MAP_START_X;
-                        data->players[i].center_y = FV_MAP_START_Y;
-                }
-        }
-}
-
-static bool
-need_clear(struct data *data)
-{
-        struct player *player;
-        int i;
-
-        /* If there are only 3 divisions then one of the panels will
-         * be blank so we always need to clear */
-        if (data->n_viewports == 3)
-                return true;
-
-        /* If the window is an odd size then the divisions might not
-         * cover the entire window */
-        if (data->n_viewports >= 2) {
-                if (data->last_fb_width & 1)
-                        return true;
-                if (data->n_viewports >= 3 && (data->last_fb_height & 1))
-                        return true;
-        }
-
-        /* Otherwise check if all of the divisions currently cover
-         * their visible area */
-        for (i = 0; i < data->n_viewports; i++) {
-                player = data->players + i;
-                if (!fv_game_covers_framebuffer(data->game,
-                                                player->center_x,
-                                                player->center_y,
-                                                player->viewport_width,
-                                                player->viewport_height))
-                        return true;
-        }
-
-        return false;
-}
-
-static void
 update_npcs(struct data *data)
 {
 #ifndef EMSCRIPTEN
@@ -656,9 +548,9 @@ paint(struct data *data)
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
         struct fv_person player;
         enum fv_logic_state_change state_change;
+        float center_x, center_y;
         unsigned int now;
         int w, h;
-        int i;
 
         SDL_GetWindowSize(data->window, &w, &h);
 
@@ -666,7 +558,6 @@ paint(struct data *data)
                 fv_gl.glViewport(0, 0, w, h);
                 data->last_fb_width = w;
                 data->last_fb_height = h;
-                data->viewports_dirty = true;
         }
 
         update_npcs(data);
@@ -678,35 +569,23 @@ paint(struct data *data)
 
         if ((state_change & FV_LOGIC_STATE_CHANGE_PLAYER)) {
                 fv_logic_get_player(data->logic,
-                                    0 /* player_num */,
                                     &player);
                 fv_network_update_player(data->nw, &player);
         }
 
-        update_viewports(data);
-        update_centers(data);
+        fv_logic_get_center(data->logic, &center_x, &center_y);
 
-        if (need_clear(data))
+        if (!fv_game_covers_framebuffer(data->game,
+                                        center_x, center_y,
+                                        w, h))
                 clear_mask |= GL_COLOR_BUFFER_BIT;
 
         fv_gl.glClear(clear_mask);
 
-        for (i = 0; i < data->n_viewports; i++) {
-                if (data->n_viewports != 1)
-                        fv_gl.glViewport(data->players[i].viewport_x,
-                                         data->players[i].viewport_y,
-                                         data->players[i].viewport_width,
-                                         data->players[i].viewport_height);
-                fv_game_paint(data->game,
-                              data->players[i].center_x,
-                              data->players[i].center_y,
-                              data->players[i].viewport_width,
-                              data->players[i].viewport_height,
-                              data->logic);
-        }
-
-        if (data->n_viewports != 1)
-                fv_gl.glViewport(0, 0, w, h);
+        fv_game_paint(data->game,
+                      center_x, center_y,
+                      w, h,
+                      data->logic);
 
         paint_hud(data, w, h);
 
@@ -1024,7 +903,7 @@ main(int argc, char **argv)
                 goto out_addresses;
         }
 
-        memset(&data.players, 0, sizeof data.players);
+        data.key_state = 0;
 
         data.redraw_queued = true;
 
