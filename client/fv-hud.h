@@ -27,12 +27,9 @@ struct fv_hud *
 fv_hud_new(struct fv_shader_data *shader_data);
 
 void
-fv_hud_paint_key_select(struct fv_hud *hud,
-                        int screen_width,
-                        int screen_height,
-                        int player_num,
-                        int key_num,
-                        int n_players);
+fv_hud_paint_title_screen(struct fv_hud *hud,
+                          int screen_width,
+                          int screen_height);
 
 void
 fv_hud_free(struct fv_hud *hud);

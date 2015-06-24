@@ -57,14 +57,6 @@ struct fv_hud_image {
 
 #include "data/hud-layout.h"
 
-static const struct fv_hud_image *
-fv_hud_key_images[] = {
-        &fv_hud_image_up,
-        &fv_hud_image_down,
-        &fv_hud_image_left,
-        &fv_hud_image_right
-};
-
 #define FV_HUD_MAX_RECTANGLES 16
 
 struct fv_hud *
@@ -262,55 +254,17 @@ fv_hud_end_rectangles(struct fv_hud *hud)
         fv_gl.glDisable(GL_BLEND);
 }
 
-static void
-fv_hud_add_title(struct fv_hud *hud)
-{
-        fv_hud_add_rectangle(hud,
-                             hud->screen_width / 2 - fv_hud_image_title.w / 2,
-                             hud->screen_height / 2,
-                             &fv_hud_image_title);
-}
-
 void
-fv_hud_paint_key_select(struct fv_hud *hud,
-                        int screen_width,
-                        int screen_height,
-                        int player_num,
-                        int key_num,
-                        int n_players)
+fv_hud_paint_title_screen(struct fv_hud *hud,
+                          int screen_width,
+                          int screen_height)
 {
-        const struct fv_hud_image *key_image = NULL;
-        int x, y;
-
         fv_hud_begin_rectangles(hud, screen_width, screen_height);
 
-        fv_hud_add_title(hud);
-
-        key_image = fv_hud_key_images[key_num];
-
-        if (n_players == 1) {
-                x = (screen_width / 2 -
-                     fv_hud_image_push.w / 2 -
-                     key_image->w / 2);
-                y = screen_height / 2 - fv_hud_image_push.h - 10;
-                fv_hud_add_rectangle(hud, x, y, &fv_hud_image_push);
-                fv_hud_add_rectangle(hud,
-                                     x + fv_hud_image_push.w, y,
-                                     key_image);
-        } else {
-                x = (screen_width / 4 -
-                     fv_hud_image_push.w / 2 +
-                     player_num % 2 * screen_width / 2);
-                y = (screen_height / 4 +
-                     (1 - player_num / 2) * screen_height / 2);
-                fv_hud_add_rectangle(hud, x, y, &fv_hud_image_push);
-                fv_hud_add_rectangle(hud,
-                                     x +
-                                     (fv_hud_image_push.w - key_image->w) / 2,
-                                     y - key_image->h,
-                                     key_image);
-        }
-
+        fv_hud_add_rectangle(hud,
+                             hud->screen_width / 2 - fv_hud_image_title.w / 2,
+                             hud->screen_height / 2 - fv_hud_image_title.h / 2,
+                             &fv_hud_image_title);
 
         fv_hud_end_rectangles(hud);
 }

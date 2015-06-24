@@ -1,10 +1,5 @@
 HUD_SVGS = \
-	hud/down.svg \
-	hud/left.svg \
-	hud/push.svg \
-	hud/right.svg \
 	hud/title.svg \
-	hud/up.svg \
 	$(NULL)
 
 HUD_PNGS = \

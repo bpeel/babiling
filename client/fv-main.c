@@ -133,7 +133,7 @@ _Static_assert(FV_N_ELEMENTS(button_mappings) <= sizeof (uint32_t) * 8,
                "in a uint32_t");
 
 enum menu_state {
-        MENU_STATE_CHOOSING_KEYS,
+        MENU_STATE_TITLE_SCREEN,
         MENU_STATE_PLAYING
 };
 
@@ -209,7 +209,7 @@ queue_redraw(struct data *data)
 static void
 reset_menu_state(struct data *data)
 {
-        data->menu_state = MENU_STATE_CHOOSING_KEYS;
+        data->menu_state = MENU_STATE_TITLE_SCREEN;
         data->last_update_time = SDL_GetTicks();
         data->viewports_dirty = true;
         data->n_viewports = 1;
@@ -272,7 +272,7 @@ update_direction(struct data *data,
                 }
         }
 
-        if (pressed_keys && data->menu_state == MENU_STATE_CHOOSING_KEYS) {
+        if (pressed_keys && data->menu_state == MENU_STATE_TITLE_SCREEN) {
                 data->menu_state = MENU_STATE_PLAYING;
                 data->last_update_time = SDL_GetTicks();
                 fv_logic_reset(data->logic, data->n_players);
@@ -346,7 +346,7 @@ handle_key_event(struct data *data,
         switch (event->keysym.sym) {
         case SDLK_ESCAPE:
                 if (event->state == SDL_PRESSED) {
-                        if (data->menu_state == MENU_STATE_CHOOSING_KEYS)
+                        if (data->menu_state == MENU_STATE_TITLE_SCREEN)
                                 data->quit = true;
                         else
                                 reset_menu_state(data);
@@ -512,11 +512,9 @@ paint_hud(struct data *data,
           int w, int h)
 {
         switch (data->menu_state) {
-        case MENU_STATE_CHOOSING_KEYS:
-                fv_hud_paint_key_select(data->hud,
-                                        w, h,
-                                        0, 0,
-                                        data->n_players);
+        case MENU_STATE_TITLE_SCREEN:
+                fv_hud_paint_title_screen(data->hud,
+                                          w, h);
                 break;
         case MENU_STATE_PLAYING:
                 break;
