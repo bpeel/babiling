@@ -71,6 +71,10 @@ fv_logic_get_player(struct fv_logic *logic,
                     struct fv_person *person);
 
 void
+fv_logic_get_player_position(struct fv_logic *logic,
+                             float *x, float *y);
+
+void
 fv_logic_get_center(struct fv_logic *logic,
                     float *x, float *y);
 

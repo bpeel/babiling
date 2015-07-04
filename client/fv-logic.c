@@ -377,6 +377,14 @@ fv_logic_get_player(struct fv_logic *logic,
 }
 
 void
+fv_logic_get_player_position(struct fv_logic *logic,
+                             float *x, float *y)
+{
+        *x = logic->player.position.x;
+        *y = logic->player.position.y;
+}
+
+void
 fv_logic_get_center(struct fv_logic *logic,
                     float *x, float *y)
 {
