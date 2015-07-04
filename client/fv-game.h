@@ -39,6 +39,17 @@ fv_game_covers_framebuffer(struct fv_game *game,
                            float center_x, float center_y,
                            int width, int height);
 
+/* This converts window-relative coordinates to a position on the
+ * floor of world, assuming that the bottom left corner of the map is
+ * the center of the window (ie, it doesn't take into account the
+ * center transform).
+ */
+void
+fv_game_screen_to_world(struct fv_game *game,
+                        int width, int height,
+                        int screen_x, int screen_y,
+                        float *world_x, float *world_y);
+
 void
 fv_game_free(struct fv_game *game);
 

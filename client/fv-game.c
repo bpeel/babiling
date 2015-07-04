@@ -52,6 +52,7 @@ struct fv_game {
         struct fv_person_painter *person_painter;
 
         struct fv_matrix base_transform;
+        struct fv_matrix base_inverse;
 };
 
 struct fv_game *
@@ -91,20 +92,25 @@ error:
 }
 
 static void
+update_base_inverse(struct fv_game *game)
+{
+        struct fv_matrix m;
+
+        fv_matrix_multiply(&m,
+                           &game->paint_state.transform.projection,
+                           &game->base_transform);
+        fv_matrix_get_inverse(&m, &game->base_inverse);
+}
+
+static void
 update_visible_area(struct fv_game *game)
 {
-        struct fv_matrix m, inverse;
         float min_x = FLT_MAX, max_x = -FLT_MAX;
         float min_y = FLT_MAX, max_y = -FLT_MAX;
         float points_in[4 * 2 * 3], points_out[4 * 2 * 4];
         float *p = points_in;
         int x, y, z, i;
         float px, py, frac;
-
-        fv_matrix_multiply(&m,
-                           &game->paint_state.transform.projection,
-                           &game->base_transform);
-        fv_matrix_get_inverse(&m, &inverse);
 
         for (y = -1; y <= 1; y += 2) {
                 for (x = -1; x <= 1; x += 2) {
@@ -117,7 +123,7 @@ update_visible_area(struct fv_game *game)
                 }
         }
 
-        fv_matrix_project_points(&inverse,
+        fv_matrix_project_points(&game->base_inverse,
                                  3, /* n_components */
                                  sizeof (float) * 3,
                                  points_in,
@@ -192,6 +198,7 @@ update_projection(struct fv_game *game,
                                   FV_GAME_NEAR_PLANE,
                                   FV_GAME_FAR_PLANE);
 
+                update_base_inverse(game);
                 update_visible_area(game);
 
                 game->last_viewport_width = w;
@@ -209,6 +216,45 @@ update_modelview(struct fv_game *game,
                             -game->paint_state.center_x,
                             -game->paint_state.center_y,
                             0.0f);
+}
+
+void
+fv_game_screen_to_world(struct fv_game *game,
+                        int width, int height,
+                        int screen_x, int screen_y,
+                        float *world_x, float *world_y)
+{
+        float points_in[2 * 3], points_out[2 * 4];
+        int i;
+        float frac;
+
+        update_projection(game, width, height);
+
+        points_in[0] = (screen_x + 0.5f) / width * 2.0f - 1.0f;
+        points_in[1] = (0.5f - screen_y) / height * 2.0f + 1.0f;
+        points_in[2] = -1.0f;
+        points_in[3] = points_in[0];
+        points_in[4] = points_in[1];
+        points_in[5] = 1.0f;
+
+        fv_matrix_project_points(&game->base_inverse,
+                                 3, /* n_components */
+                                 sizeof (float) * 3,
+                                 points_in,
+                                 sizeof (float) * 4,
+                                 points_out,
+                                 2 /* n_points */);
+
+        for (i = 0; i < 2; i++) {
+                points_out[i * 4 + 0] /= points_out[i * 4 + 3];
+                points_out[i * 4 + 1] /= points_out[i * 4 + 3];
+                points_out[i * 4 + 2] /= points_out[i * 4 + 3];
+        }
+
+        /* See comment above in update_visible_area */
+        frac = (0 - points_out[6]) / (points_out[2] - points_out[6]);
+        *world_x = frac * (points_out[0] - points_out[4]) + points_out[4];
+        *world_y = frac * (points_out[1] - points_out[5]) + points_out[5];
 }
 
 bool
