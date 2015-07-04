@@ -171,6 +171,11 @@ struct data {
 
         uint32_t key_state;
 
+        bool mouse_pressed;
+        bool mouse_pos_dirty;
+        int mouse_screen_x, mouse_screen_y;
+        float mouse_x, mouse_y;
+
         bool redraw_queued;
 
 #ifndef EMSCRIPTEN
@@ -241,6 +246,65 @@ toggle_fullscreen(struct data *data)
 }
 #endif /* EMSCRIPTEN */
 
+static bool
+check_joystick_axis_movement(struct data *data,
+                             float *direction,
+                             float *speed)
+{
+        struct joystick *joystick;
+        int i;
+
+        for (i = 0;
+             i < data->joysticks.length / sizeof (struct joystick);
+             i++)  {
+                joystick = (struct joystick *) data->joysticks.data + i;
+
+                if (joystick->speed > 0.0f) {
+                        *direction = joystick->direction;
+                        *speed = joystick->speed;
+                        return true;
+                }
+        }
+
+        return false;
+}
+
+static bool
+check_mouse_movement(struct data *data,
+                     float *direction)
+{
+        float player_x, player_y;
+        float center_x, center_y;
+        float dx, dy;
+
+        if (!data->mouse_pressed)
+                return false;
+
+        if (data->mouse_pos_dirty) {
+                fv_game_screen_to_world(data->game,
+                                        data->last_fb_width,
+                                        data->last_fb_height,
+                                        data->mouse_screen_x,
+                                        data->mouse_screen_y,
+                                        &data->mouse_x,
+                                        &data->mouse_y);
+                data->mouse_pos_dirty = false;
+        }
+
+        fv_logic_get_center(data->logic, &center_x, &center_y);
+        fv_logic_get_player_position(data->logic, &player_x, &player_y);
+
+        dx = data->mouse_x + center_x - player_x;
+        dy = data->mouse_y + center_y - player_y;
+
+        if (dx * dx + dy * dy <= 0.1f * 0.1f)
+                return false;
+
+        *direction = atan2f(dy, dx);
+
+        return true;
+}
+
 static void
 update_direction(struct data *data)
 {
@@ -299,23 +363,14 @@ update_direction(struct data *data)
                 break;
         default:
                 /* If no buttons or keys are pressed then check if any
-                 * joystick axes are moving.
+                 * movement is triggered by a joystick axis or the
+                 * mouse.
                  */
-                for (i = 0;
-                     i < data->joysticks.length / sizeof (struct joystick);
-                     i++)  {
-                        joystick = (struct joystick *) data->joysticks.data + i;
-
-                        if (joystick->speed > 0.0f) {
-                                direction = joystick->direction;
-                                speed = joystick->speed;
-                                goto found_joystick;
-                        }
+                if (!check_joystick_axis_movement(data, &direction, &speed) &&
+                    !check_mouse_movement(data, &direction)) {
+                        speed = 0.0f;
+                        direction = 0.0f;
                 }
-
-                speed = 0.0f;
-                direction = 0.0f;
-        found_joystick:
                 break;
         }
 
@@ -528,6 +583,38 @@ handle_joystick_removed(struct data *data,
 }
 
 static void
+handle_mouse_button(struct data *data,
+                    const SDL_MouseButtonEvent *event)
+{
+        if (event->button != 1)
+                return;
+
+        if (event->state == SDL_PRESSED) {
+                data->mouse_pressed = true;
+                data->mouse_screen_x = event->x;
+                data->mouse_screen_y = event->y;
+                data->mouse_pos_dirty = true;
+                queue_redraw(data);
+        } else {
+                data->mouse_pressed = false;
+                update_direction(data);
+        }
+}
+
+static void
+handle_mouse_motion(struct data *data,
+                    const SDL_MouseMotionEvent *event)
+{
+        if (!data->mouse_pressed)
+                return;
+
+        data->mouse_screen_x = event->x;
+        data->mouse_screen_y = event->y;
+        data->mouse_pos_dirty = true;
+        queue_redraw(data);
+}
+
+static void
 handle_event(struct data *data,
              const SDL_Event *event)
 {
@@ -547,6 +634,15 @@ handle_event(struct data *data,
         case SDL_KEYDOWN:
         case SDL_KEYUP:
                 handle_key_event(data, &event->key);
+                goto handled;
+
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+                handle_mouse_button(data, &event->button);
+                goto handled;
+
+        case SDL_MOUSEMOTION:
+                handle_mouse_motion(data, &event->motion);
                 goto handled;
 
         case SDL_JOYBUTTONDOWN:
@@ -655,6 +751,12 @@ paint(struct data *data)
         }
 
         update_npcs(data);
+
+        /* The direction constantly changes when the mouse is pressed
+         * so we need to recalculate every time.
+         */
+        if (data->mouse_pressed)
+                update_direction(data);
 
         now = SDL_GetTicks();
         state_change = fv_logic_update(data->logic,
@@ -999,6 +1101,7 @@ main(int argc, char **argv)
         }
 
         data.key_state = 0;
+        data.mouse_pressed = false;
 
         data.redraw_queued = true;
 
@@ -1080,8 +1183,6 @@ main(int argc, char **argv)
                 ret = EXIT_FAILURE;
                 goto out_context;
         }
-
-        SDL_ShowCursor(0);
 
         /* All of the painting functions expect to have the default
          * OpenGL state plus the following modifications */
