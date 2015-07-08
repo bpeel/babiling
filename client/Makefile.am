@@ -20,7 +20,6 @@ sources = \
 	fv-array-object.h \
 	fv-data.c \
 	fv-data.h \
-	fv-error-message.c \
 	fv-error-message.h \
 	fv-game.c \
 	fv-game.h \
@@ -29,8 +28,7 @@ sources = \
 	fv-gl-funcs.h \
 	fv-hud.c \
 	fv-hud.h \
-	fv-image.c \
-	fv-image.h \
+	fv-image-data.h \
 	fv-logic.c \
 	fv-logic.h \
 	fv-main.c \
@@ -73,15 +71,18 @@ ldadd = \
 
 finvenkisto_SOURCES = \
 	$(sources) \
+	fv-error-message-native.c \
 	fv-network-native.c \
+	fv-image-data-native.c \
 	$(NULL)
 finvenkisto_LDADD = $(ldadd)
 
 finvenkisto_html_SOURCES = \
 	$(sources) \
+	fv-error-message-emscripten.c \
 	fv-network-emscripten.c \
+	fv-image-data-emscripten.c \
 	$(NULL)
-
 finvenkisto_html_LDFLAGS = \
 	--pre-js $(srcdir)/configure-emscripten.js \
 	--pre-js $(builddir)/data/finvenkisto-data.js \

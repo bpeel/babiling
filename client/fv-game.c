@@ -56,7 +56,8 @@ struct fv_game {
 };
 
 struct fv_game *
-fv_game_new(struct fv_shader_data *shader_data)
+fv_game_new(struct fv_image_data *image_data,
+            struct fv_shader_data *shader_data)
 {
         struct fv_game *game = fv_calloc(sizeof *game);
 
@@ -72,11 +73,11 @@ fv_game_new(struct fv_shader_data *shader_data)
         fv_matrix_scale(&game->base_transform,
                         FV_GAME_SCALE, FV_GAME_SCALE, FV_GAME_SCALE);
 
-        game->map_painter = fv_map_painter_new(shader_data);
+        game->map_painter = fv_map_painter_new(image_data, shader_data);
         if (game->map_painter == NULL)
                 goto error;
 
-        game->person_painter = fv_person_painter_new(shader_data);
+        game->person_painter = fv_person_painter_new(image_data, shader_data);
         if (game->person_painter == NULL)
                 goto error_map;
 

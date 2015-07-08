@@ -29,6 +29,7 @@
 
 #include "fv-game.h"
 #include "fv-logic.h"
+#include "fv-image-data.h"
 #include "fv-shader-data.h"
 #include "fv-gl.h"
 #include "fv-util.h"
@@ -42,6 +43,7 @@
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
+#include <emscripten/html5.h>
 /* On Emscripten you have to request 2.0 to get a 2.0 ES context but
  * the version is reports in GL_VERSION is 1.0 because that is the
  * WebGL version.
@@ -148,16 +150,23 @@ struct data {
          * freed.
          */
         struct fv_buffer server_addresses;
-
-        struct fv_shader_data shader_data;
-        struct fv_game *game;
-        struct fv_logic *logic;
-        struct fv_hud *hud;
         struct fv_network *nw;
+
+        struct fv_image_data *image_data;
+        Uint32 image_data_event;
 
         SDL_Window *window;
         int last_fb_width, last_fb_height;
         SDL_GLContext gl_context;
+
+        struct {
+                struct fv_shader_data shader_data;
+                struct fv_game *game;
+                struct fv_hud *hud;
+                bool shader_data_loaded;
+        } graphics;
+
+        struct fv_logic *logic;
 
         bool quit;
         bool is_fullscreen;
@@ -281,7 +290,7 @@ check_mouse_movement(struct data *data,
                 return false;
 
         if (data->mouse_pos_dirty) {
-                fv_game_screen_to_world(data->game,
+                fv_game_screen_to_world(data->graphics.game,
                                         data->last_fb_width,
                                         data->last_fb_height,
                                         data->mouse_screen_x,
@@ -615,6 +624,86 @@ handle_mouse_motion(struct data *data,
 }
 
 static void
+destroy_graphics(struct data *data)
+{
+        if (data->graphics.game) {
+                fv_game_free(data->graphics.game);
+                data->graphics.game = NULL;
+        }
+
+        if (data->graphics.shader_data_loaded) {
+                fv_shader_data_destroy(&data->graphics.shader_data);
+                data->graphics.shader_data_loaded = false;
+        }
+
+        if (data->graphics.hud) {
+                fv_hud_free(data->graphics.hud);
+                data->graphics.hud = NULL;
+        }
+}
+
+static void
+create_graphics(struct data *data)
+{
+        /* All of the painting functions expect to have the default
+         * OpenGL state plus the following modifications */
+
+        fv_gl.glEnable(GL_CULL_FACE);
+        fv_gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        /* The current program, vertex array, array buffer and bound
+         * textures are not expected to be reset back to zero */
+
+        data->last_fb_width = data->last_fb_height = 0;
+
+        if (!fv_shader_data_init(&data->graphics.shader_data))
+                goto error;
+
+        data->graphics.shader_data_loaded = true;
+
+        data->graphics.hud = fv_hud_new(data->image_data,
+                                        &data->graphics.shader_data);
+
+        if (data->graphics.hud == NULL)
+                goto error;
+
+        data->graphics.game = fv_game_new(data->image_data,
+                                          &data->graphics.shader_data);
+
+        if (data->graphics.game == NULL)
+                goto error;
+
+#ifdef EMSCRIPTEN
+        emscripten_resume_main_loop();
+#endif
+
+        return;
+
+error:
+        destroy_graphics(data);
+        data->quit = true;
+}
+
+static void
+handle_image_data_event(struct data *data,
+                        const SDL_UserEvent *event)
+{
+        switch ((enum fv_image_data_result) event->code) {
+        case FV_IMAGE_DATA_SUCCESS:
+                create_graphics(data);
+                queue_redraw(data);
+                break;
+
+        case FV_IMAGE_DATA_FAIL:
+                data->quit = true;
+                break;
+        }
+
+        fv_image_data_free(data->image_data);
+        data->image_data = NULL;
+}
+
+static void
 handle_event(struct data *data,
              const SDL_Event *event)
 {
@@ -667,6 +756,11 @@ handle_event(struct data *data,
                 goto handled;
         }
 
+        if (event->type == data->image_data_event) {
+                handle_image_data_event(data, &event->user);
+                goto handled;
+        }
+
 #ifndef EMSCRIPTEN
         if (event->type == data->redraw_user_event) {
                 queue_redraw(data);
@@ -684,7 +778,7 @@ paint_hud(struct data *data,
 {
         switch (data->menu_state) {
         case MENU_STATE_TITLE_SCREEN:
-                fv_hud_paint_title_screen(data->hud,
+                fv_hud_paint_title_screen(data->graphics.hud,
                                           w, h);
                 break;
         case MENU_STATE_PLAYING:
@@ -732,7 +826,8 @@ update_npcs(struct data *data)
 #endif
 }
 
-static void
+/* Returns whether redrawing should continue */
+static bool
 paint(struct data *data)
 {
         GLbitfield clear_mask = GL_DEPTH_BUFFER_BIT;
@@ -771,14 +866,14 @@ paint(struct data *data)
 
         fv_logic_get_center(data->logic, &center_x, &center_y);
 
-        if (!fv_game_covers_framebuffer(data->game,
+        if (!fv_game_covers_framebuffer(data->graphics.game,
                                         center_x, center_y,
                                         w, h))
                 clear_mask |= GL_COLOR_BUFFER_BIT;
 
         fv_gl.glClear(clear_mask);
 
-        fv_game_paint(data->game,
+        fv_game_paint(data->graphics.game,
                       center_x, center_y,
                       w, h,
                       data->logic);
@@ -790,7 +885,19 @@ paint(struct data *data)
         /* If the logic has become stable then we'll stop redrawing
          * until something changes.
          */
-        if (state_change == 0) {
+        return state_change != 0;
+}
+
+static void
+handle_redraw(struct data *data)
+{
+        /* If the graphics aren't loaded yet then don't load anything.
+         * Otherwise try painting and if nothing has changed then stop
+         * redrawing.
+         */
+
+        if (data->graphics.game == NULL ||
+            !paint(data)) {
 #ifdef EMSCRIPTEN
                 emscripten_pause_main_loop();
 #endif
@@ -1033,7 +1140,7 @@ emscripten_loop_cb(void *user_data)
 {
         struct data *data = user_data;
 
-        paint(data);
+        handle_redraw(data);
 }
 
 static int
@@ -1044,6 +1151,53 @@ emscripten_event_filter(void *userdata,
 
         /* Filter the event */
         return 0;
+}
+
+static EM_BOOL
+context_lost_cb(int event_type,
+                const void *reserved,
+                void *user_data)
+{
+        struct data *data = user_data;
+
+        destroy_graphics(data);
+
+        /* Cancel loading the images */
+        if (data->image_data) {
+                fv_image_data_free(data->image_data);
+                data->image_data = NULL;
+        } else {
+                emscripten_pause_main_loop();
+        }
+
+        return true;
+}
+
+static EM_BOOL
+context_restored_cb(int event_type,
+                    const void *reserved,
+                    void *user_data)
+{
+        struct data *data = user_data;
+
+        /* When the context is lost all of the extension objects that
+         * Emscripten created become invalid so it needs to query them
+         * again. Ideally it would handle this itself internally. This
+         * is probably poking into its internals a bit.
+         */
+        EM_ASM({
+                        var context = GL.currentContext;
+                        context.initExtensionsDone = false;
+                        GL.initExtensions(context);
+                });
+
+        /* Reload the images. This will also reload the graphics when
+         * it has finished.
+         */
+        if (data->image_data == NULL)
+                data->image_data = fv_image_data_new(data->image_data_event);
+
+        return true;
 }
 
 #else /* EMSCRIPTEN */
@@ -1065,7 +1219,7 @@ run_main_loop(struct data *data)
                 if (had_event)
                         handle_event(data, &event);
                 else if (data->redraw_queued)
-                        paint(data);
+                        handle_redraw(data);
         }
 }
 
@@ -1087,6 +1241,8 @@ main(int argc, char **argv)
 #else
         data.is_fullscreen = true;
 #endif
+
+        memset(&data.graphics, 0, sizeof data.graphics);
 
         if (!process_arguments(&data, argc, argv)) {
                 ret = EXIT_FAILURE;
@@ -1184,42 +1340,26 @@ main(int argc, char **argv)
                 goto out_context;
         }
 
-        /* All of the painting functions expect to have the default
-         * OpenGL state plus the following modifications */
-
-        fv_gl.glEnable(GL_CULL_FACE);
-        fv_gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        /* The current program, vertex array, array buffer and bound
-         * textures are not expected to be reset back to zero */
+        data.image_data_event = SDL_RegisterEvents(1);
 
         data.quit = false;
-        data.last_fb_width = data.last_fb_height = 0;
-
-        if (!fv_shader_data_init(&data.shader_data)) {
-                ret = EXIT_FAILURE;
-                goto out_context;
-        }
-
-        data.hud = fv_hud_new(&data.shader_data);
-
-        if (data.hud == NULL) {
-                ret = EXIT_FAILURE;
-                goto out_shader_data;
-        }
-
-        data.game = fv_game_new(&data.shader_data);
-
-        if (data.game == NULL) {
-                ret = EXIT_FAILURE;
-                goto out_hud;
-        }
 
         data.logic = fv_logic_new();
+
+        data.image_data = fv_image_data_new(data.image_data_event);
 
         reset_menu_state(&data);
 
 #ifdef EMSCRIPTEN
+
+        emscripten_set_webglcontextlost_callback("canvas",
+                                                 &data,
+                                                 false /* useCapture */,
+                                                 context_lost_cb);
+        emscripten_set_webglcontextrestored_callback("canvas",
+                                                     &data,
+                                                     false /* useCapture */,
+                                                     context_restored_cb);
 
         SDL_SetEventFilter(emscripten_event_filter, &data);
 
@@ -1236,11 +1376,11 @@ main(int argc, char **argv)
 
         fv_logic_free(data.logic);
 
-        fv_game_free(data.game);
- out_hud:
-        fv_hud_free(data.hud);
- out_shader_data:
-        fv_shader_data_destroy(&data.shader_data);
+        destroy_graphics(&data);
+
+        if (data.image_data)
+                fv_image_data_free(data.image_data);
+
  out_context:
         SDL_GL_MakeCurrent(NULL, NULL);
         SDL_GL_DeleteContext(data.gl_context);

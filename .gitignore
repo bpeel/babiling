@@ -27,6 +27,9 @@
 /client/rply/Makefile.in
 /client/rply/convert
 /client/rply/librply.a
+/client/data/fv-image-data-enum.h
+/client/data/fv-image-data-files.h
+/client/data/fv-image-data-stamp
 /client/data/Makefile.in
 /client/data/Makefile
 /client/data/map-texture.png
