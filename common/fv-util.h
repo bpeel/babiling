@@ -39,8 +39,12 @@
 #define FV_NULL_TERMINATED
 #endif
 
+#ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+#ifndef MAX
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 #if defined(HAVE_ALIGNOF)
 #include <stdalign.h>
