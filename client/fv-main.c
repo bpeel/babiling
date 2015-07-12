@@ -1004,9 +1004,11 @@ show_help(void)
         printf("Finvenkisto - Virtual Language Exchange\n"
                "usage: finvenkisto [options]\n"
                "Options:\n"
-               " -h       Show this help messae\n"
-               " -w       Run in a window\n"
-               " -f       Run fullscreen (default)\n");
+               " -h        Show this help messae\n"
+               " -w        Run in a window\n"
+               " -s <host> Specify the server to connect to. Can be given\n"
+               "           multiple times to add alternatives.\n"
+               " -f        Run fullscreen (default)\n");
 }
 
 static int
