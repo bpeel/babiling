@@ -1280,6 +1280,10 @@ main(int argc, char **argv)
 #endif /* EMSCRIPTEN */
 
         data.nw = fv_network_new(consistent_event_cb, &data);
+        if (data.nw == NULL) {
+                ret = EXIT_FAILURE;
+                goto out_npcs;
+        }
 
         add_server_addresses(&data);
 
@@ -1390,6 +1394,7 @@ main(int argc, char **argv)
         SDL_DestroyWindow(data.window);
  out_network:
         fv_network_free(data.nw);
+ out_npcs:
 #ifndef EMSCRIPTEN
         fv_buffer_destroy(&data.npcs);
         fv_buffer_destroy(&data.dirty_npcs);

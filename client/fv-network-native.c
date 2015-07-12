@@ -40,6 +40,7 @@
 #include "fv-bitmask.h"
 #include "fv-netaddress.h"
 #include "fv-list.h"
+#include "fv-error-message.h"
 
 #include "fv-network-common.h"
 
@@ -676,20 +677,36 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
         fv_list_init(&nw->queued_hosts);
         fv_list_init(&nw->hosts);
 
-        if (pipe(nw->wakeup_pipe) == -1)
-                fv_fatal("Error creating pipe: %s", strerror(errno));
+        if (pipe(nw->wakeup_pipe) == -1) {
+                fv_error_message("Error creating pipe: %s", strerror(errno));
+                goto error_base;
+        }
 
         nw->mutex = SDL_CreateMutex();
-        if (nw->mutex == NULL)
-                fv_fatal("Error creating mutex: %s", SDL_GetError());
+        if (nw->mutex == NULL) {
+                fv_error_message("Error creating mutex: %s", SDL_GetError());
+                goto error_pipe;
+        }
 
         nw->thread = SDL_CreateThread(thread_func,
                                       "Network",
                                       nw);
-        if (nw->thread == NULL)
-                fv_fatal("Error creating thread: %s", SDL_GetError());
+        if (nw->thread == NULL) {
+                fv_error_message("Error creating thread: %s", SDL_GetError());
+                goto error_mutex;
+        }
 
         return nw;
+
+error_mutex:
+        SDL_DestroyMutex(nw->mutex);
+error_pipe:
+        fv_close(nw->wakeup_pipe[0]);
+        fv_close(nw->wakeup_pipe[1]);
+error_base:
+        destroy_base(&nw->base);
+        fv_free(nw);
+        return NULL;
 }
 
 void
