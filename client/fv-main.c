@@ -40,6 +40,7 @@
 #include "fv-network.h"
 #include "fv-bitmask.h"
 #include "fv-pointer-array.h"
+#include "fv-audio-buffer.h"
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
@@ -186,6 +187,9 @@ struct data {
         float mouse_x, mouse_y;
 
         bool redraw_queued;
+
+        SDL_AudioDeviceID audio_device;
+        struct fv_audio_buffer *audio_buffer;
 
 #ifndef EMSCRIPTEN
 
@@ -1227,6 +1231,50 @@ run_main_loop(struct data *data)
 
 #endif /* EMSCRIPTEN */
 
+static void
+audio_cb(void *user_data,
+         uint8_t *stream,
+         int len)
+{
+        struct data *data = user_data;
+
+        fv_audio_buffer_get(data->audio_buffer,
+                            (int16_t *) stream,
+                            len / sizeof (int16_t));
+}
+
+static bool
+open_audio_device(struct data *data)
+{
+        SDL_AudioSpec desired, obtained;
+
+        SDL_zero(desired);
+        desired.freq = 48000;
+        desired.format = AUDIO_S16SYS;
+        desired.channels = 1;
+        desired.samples = 4096;
+        desired.callback = audio_cb;
+        desired.userdata = data;
+
+        data->audio_device =
+                SDL_OpenAudioDevice(NULL, /* default device */
+                                    false, /* iscapture */
+                                    &desired,
+                                    &obtained,
+                                    SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+        if (data->audio_device == 0) {
+                fv_error_message("Error opening audio device: %s",
+                                 SDL_GetError());
+                return false;
+        }
+
+        data->audio_buffer = fv_audio_buffer_new(obtained.freq);
+
+        SDL_PauseAudioDevice(data->audio_device, false);
+
+        return true;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1251,11 +1299,16 @@ main(int argc, char **argv)
                 goto out_addresses;
         }
 
-        res = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+        res = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO);
         if (res < 0) {
                 fv_error_message("Unable to init SDL: %s\n", SDL_GetError());
                 ret = EXIT_FAILURE;
                 goto out_addresses;
+        }
+
+        if (!open_audio_device(&data)) {
+                ret = EXIT_FAILURE;
+                goto out_sdl;
         }
 
         data.key_state = 0;
@@ -1269,7 +1322,7 @@ main(int argc, char **argv)
         if (data.npcs_mutex == NULL) {
                 fv_error_message("Failed to create mutex");
                 ret = EXIT_FAILURE;
-                goto out_sdl;
+                goto out_audio_device;
         }
 
         fv_buffer_init(&data.npcs);
@@ -1402,8 +1455,11 @@ main(int argc, char **argv)
 #endif /* EMSCRIPTEN */
         close_joysticks(&data);
 #ifndef EMSCRIPTEN
- out_sdl:
+ out_audio_device:
 #endif /* EMSCRIPTEN */
+        SDL_CloseAudioDevice(data.audio_device);
+        fv_audio_buffer_free(data.audio_buffer);
+ out_sdl:
         SDL_Quit();
  out_addresses:
         fv_buffer_destroy(&data.server_addresses);
