@@ -44,6 +44,11 @@ get_payload_length(va_list ap)
                 switch (va_arg(ap, enum fv_proto_type)) {
 #include "fv-proto-types.h"
 
+                case FV_PROTO_TYPE_BLOB:
+                        payload_length += va_arg(ap, size_t);
+                        va_arg(ap, const uint8_t *);
+                        break;
+
                 case FV_PROTO_TYPE_NONE:
                         return payload_length;
                 }
@@ -69,6 +74,8 @@ fv_proto_write_command_v(uint8_t *buffer,
         int pos;
         size_t payload_length = 0;
         size_t frame_header_length;
+        size_t blob_length;
+        const uint8_t *blob_data;
         va_list ap_copy;
 
         va_copy(ap_copy, ap);
@@ -104,6 +111,13 @@ fv_proto_write_command_v(uint8_t *buffer,
         while (true) {
                 switch (va_arg(ap, enum fv_proto_type)) {
 #include "fv-proto-types.h"
+
+                case FV_PROTO_TYPE_BLOB:
+                        blob_length = va_arg(ap, size_t);
+                        blob_data = va_arg(ap, const uint8_t *);
+                        memcpy(buffer + pos, blob_data, blob_length);
+                        pos += blob_length;
+                        break;
 
                 case FV_PROTO_TYPE_NONE:
                         goto done;
@@ -162,12 +176,22 @@ fv_proto_read_payload(const uint8_t *buffer,
         size_t pos = 0;
         bool ret = true;
         va_list ap;
+        const uint8_t **blob_data;
+        size_t *blob_size;
 
         va_start(ap, length);
 
         while (true) {
                 switch (va_arg(ap, enum fv_proto_type)) {
 #include "fv-proto-types.h"
+
+                case FV_PROTO_TYPE_BLOB:
+                        blob_size = va_arg(ap, size_t *);
+                        blob_data = va_arg(ap, const uint8_t **);
+                        *blob_size = length - pos;
+                        *blob_data = buffer + pos;
+                        pos = length;
+                        break;
 
                 case FV_PROTO_TYPE_NONE:
                         if (pos != length)
