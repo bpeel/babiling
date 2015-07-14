@@ -40,6 +40,7 @@
 #include "fv-bitmask.h"
 #include "fv-netaddress.h"
 #include "fv-list.h"
+#include "fv-recorder.h"
 #include "fv-error-message.h"
 
 #include "fv-network-common.h"
@@ -377,6 +378,33 @@ write_buf_is_empty(struct fv_network *nw)
 }
 
 static bool
+write_speech(struct fv_network *nw)
+{
+        int packet_size;
+
+        if (nw->write_buf_pos + 3 > sizeof nw->write_buf)
+                return false;
+
+        packet_size = fv_recorder_get_packet(nw->base.recorder,
+                                             nw->write_buf +
+                                             nw->write_buf_pos +
+                                             3,
+                                             sizeof nw->write_buf -
+                                             nw->write_buf_pos -
+                                             3);
+        if (packet_size == -1)
+                return false;
+
+        nw->write_buf[nw->write_buf_pos] = 0x82;
+        nw->write_buf[nw->write_buf_pos + 1] = packet_size + 1;
+        nw->write_buf[nw->write_buf_pos + 2] = FV_PROTO_SPEECH;
+
+        nw->write_buf_pos += packet_size + 3;
+
+        return true;
+}
+
+static bool
 handle_write(struct fv_network *nw)
 {
         int wrote;
@@ -655,6 +683,14 @@ free_hosts(struct fv_list *hosts)
         fv_list_init(hosts);
 }
 
+static void
+recorder_cb(void *user_data)
+{
+        struct fv_network *nw = user_data;
+
+        fv_network_wakeup_thread(nw);
+}
+
 struct fv_network *
 fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
                void *user_data)
@@ -688,16 +724,22 @@ fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
                 goto error_pipe;
         }
 
+        nw->base.recorder = fv_recorder_new(recorder_cb, nw);
+        if (nw->base.recorder == NULL)
+                goto error_mutex;
+
         nw->thread = SDL_CreateThread(thread_func,
                                       "Network",
                                       nw);
         if (nw->thread == NULL) {
                 fv_error_message("Error creating thread: %s", SDL_GetError());
-                goto error_mutex;
+                goto error_recorder;
         }
 
         return nw;
 
+error_recorder:
+        fv_recorder_free(nw->base.recorder);
 error_mutex:
         SDL_DestroyMutex(nw->mutex);
 error_pipe:
@@ -747,6 +789,8 @@ fv_network_free(struct fv_network *nw)
         SDL_UnlockMutex(nw->mutex);
 
         fv_network_wakeup_thread(nw);
+
+        fv_recorder_free(nw->base.recorder);
 
         SDL_WaitThread(nw->thread, NULL /* status */);
 

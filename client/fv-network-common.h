@@ -20,6 +20,8 @@
 #include "config.h"
 
 struct fv_network_base {
+        struct fv_recorder *recorder;
+
         bool sent_hello;
         bool has_player_id;
         uint64_t player_id;
@@ -61,6 +63,9 @@ write_command(struct fv_network *nw,
               ...);
 
 static bool
+write_speech(struct fv_network *nw);
+
+static bool
 write_buf_is_empty(struct fv_network *nw);
 
 static struct fv_network_base *
@@ -78,6 +83,9 @@ needs_write_poll_base(struct fv_network *nw)
                 return true;
 
         if (base->player_dirty)
+                return true;
+
+        if (fv_recorder_has_packet(base->recorder))
                 return true;
 
         if (base->last_update_time + FV_NETWORK_KEEP_ALIVE_TIME <=
@@ -186,6 +194,11 @@ fill_write_buf(struct fv_network *nw)
 
         if (base->player_dirty) {
                 if (!write_player(nw))
+                        return;
+        }
+
+        while (fv_recorder_has_packet(base->recorder)) {
+                if (!write_speech(nw))
                         return;
         }
 

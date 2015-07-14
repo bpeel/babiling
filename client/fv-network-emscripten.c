@@ -31,6 +31,8 @@
 #include "fv-buffer.h"
 #include "fv-person.h"
 #include "fv-bitmask.h"
+#include "fv-recorder.h"
+#include "fv-error-message.h"
 
 #include "fv-network-common.h"
 
@@ -314,13 +316,9 @@ fv_network_connect_timeout_cb(struct fv_network *nw)
         nw->has_socket = true;
 }
 
-static int
-write_command(struct fv_network *nw,
-              uint8_t command,
-              ...)
+static bool
+write_buffer_full(struct fv_network *nw)
 {
-        va_list ap;
-        int res;
         int buffered_amount = EM_ASM_INT_V({
                         return Module.fv_socket.bufferedAmount;
                 });
@@ -330,7 +328,31 @@ write_command(struct fv_network *nw,
          * will be closed. This just uses a number out of a hat that
          * might work.
          */
-        if (buffered_amount >= 800)
+        return buffered_amount >= 800;
+}
+
+static void
+send_buf(struct fv_network *nw,
+         uint8_t *buf,
+         size_t length)
+{
+        EM_ASM_({
+                        var buf = HEAPU8.subarray($0, $0 + $1);
+                        Module.fv_socket.send(buf);
+                }, buf, length);
+
+        nw->base.last_update_time = SDL_GetTicks();
+}
+
+static int
+write_command(struct fv_network *nw,
+              uint8_t command,
+              ...)
+{
+        va_list ap;
+        int res;
+
+        if (write_buffer_full(nw))
                 return -1;
 
         va_start(ap, command);
@@ -344,14 +366,31 @@ write_command(struct fv_network *nw,
 
         assert(res != -1);
 
-        EM_ASM_({
-                        var buf = HEAPU8.subarray($0, $0 + $1);
-                        Module.fv_socket.send(buf);
-                }, nw->buf + 2, res - 2);
-
-        nw->base.last_update_time = SDL_GetTicks();
+        send_buf(nw, nw->buf + 2, res - 2);
 
         return res;
+}
+
+static bool
+write_speech(struct fv_network *nw)
+{
+        uint8_t buf[1 + FV_PROTO_MAX_SPEECH_SIZE];
+        int packet_size;
+
+        if (write_buffer_full(nw))
+                return false;
+
+        packet_size = fv_recorder_get_packet(nw->base.recorder,
+                                             buf + 1,
+                                             FV_PROTO_MAX_SPEECH_SIZE);
+
+        assert(packet_size != -1);
+
+        buf[0] = FV_PROTO_SPEECH;
+
+        send_buf(nw, buf, packet_size + 1);
+
+        return true;
 }
 
 static bool
