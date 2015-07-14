@@ -143,7 +143,8 @@ AS_IF([test "x$IS_EMSCRIPTEN" = "xyes"],
                [mingw*],
                [GL_CFLAGS=""],
                [PKG_CHECK_MODULES([GL], [gl])])
-      PKG_CHECK_MODULES([SDL], [sdl2])])
+       PKG_CHECK_MODULES([SDL], [sdl2])
+       PKG_CHECK_MODULES([PULSE_SIMPLE], [libpulse-simple])])
 
 AC_SUBST(FINVENKISTO_EXTRA_CFLAGS)
 AC_SUBST(FINVENKISTO_EXTRA_LIBS)

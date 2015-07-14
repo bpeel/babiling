@@ -15,6 +15,10 @@ AM_CFLAGS = \
 	-I$(srcdir)/../common \
 	$(NULL)
 
+if !IS_EMSCRIPTEN
+AM_CFLAGS += $(PULSE_SIMPLE_CFLAGS)
+endif
+
 sources = \
 	fv-array-object.c \
 	fv-array-object.h \
@@ -40,6 +44,7 @@ sources = \
 	fv-map-painter.h \
 	fv-matrix.c \
 	fv-matrix.h \
+	fv-microphone.h \
 	fv-model.c \
 	fv-model.h \
 	fv-network.h \
@@ -74,14 +79,19 @@ finvenkisto_SOURCES = \
 	fv-error-message-native.c \
 	fv-network-native.c \
 	fv-image-data-native.c \
+	fv-microphone-pulse.c \
 	$(NULL)
-finvenkisto_LDADD = $(ldadd)
+finvenkisto_LDADD = \
+	$(ldadd) \
+	$(PULSE_SIMPLE_LIBS) \
+	$(NULL)
 
 finvenkisto_html_SOURCES = \
 	$(sources) \
 	fv-error-message-emscripten.c \
 	fv-network-emscripten.c \
 	fv-image-data-emscripten.c \
+	fv-microphone-emscripten.c \
 	$(NULL)
 finvenkisto_html_LDFLAGS = \
 	--pre-js $(srcdir)/configure-emscripten.js \
