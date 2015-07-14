@@ -37,10 +37,20 @@
 /* Size of the header that is common to all messages */
 #define FV_PROTO_HEADER_SIZE 1
 
+/* Maximum number of bytes allowed in an Opus packet. Considering that
+ * each packet is 10ms, this allows 11.9kb/sec. 122 is chosen so that
+ * the maximum frame payload size won't overflow 125 bytes. That way
+ * the length can always be stored in a byte.
+ */
+#define FV_PROTO_MAX_SPEECH_SIZE 122
+
+/* The length of time that all Opus packets should be, in ms */
+#define FV_PROTO_SPEECH_TIME 10
+
 /* Maximum size of a message including the header and payload. */
-#define FV_PROTO_MAX_MESSAGE_SIZE (sizeof (uint16_t) * 2 + \
-                                   sizeof (uint32_t) * 2 + \
-                                   FV_PROTO_HEADER_SIZE)
+#define FV_PROTO_MAX_MESSAGE_SIZE (FV_PROTO_HEADER_SIZE +       \
+                                   sizeof (uint16_t) +          \
+                                   FV_PROTO_MAX_SPEECH_SIZE)
 
 /* The WebSocket protocol says that a control frame payload can not be
  * longer than 125 bytes.
@@ -51,11 +61,13 @@
 #define FV_PROTO_RECONNECT 0x81
 #define FV_PROTO_UPDATE_POSITION 0x82
 #define FV_PROTO_KEEP_ALIVE 0x83
+#define FV_PROTO_SPEECH 0x84
 
 #define FV_PROTO_PLAYER_ID 0x00
 #define FV_PROTO_CONSISTENT 0x01
 #define FV_PROTO_N_PLAYERS 0x02
 #define FV_PROTO_PLAYER_POSITION 0x03
+#define FV_PROTO_PLAYER_SPEECH 0x04
 
 #define FV_PROTO_MAX_FRAME_HEADER_LENGTH (1 + 1 + 8 + 4)
 
