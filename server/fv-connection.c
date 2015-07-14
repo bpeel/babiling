@@ -46,6 +46,10 @@
 #include "fv-base64.h"
 #include "sha1.h"
 
+struct fv_connection_dirty_state {
+        uint8_t flags;
+};
+
 struct fv_connection {
         struct fv_netaddress remote_address;
         char *remote_address_string;
@@ -61,7 +65,9 @@ struct fv_connection {
         /* Number of players that we last told the client about */
         int n_players;
 
-        /* One byte for each player to mark the dirty state */
+        /* An array of struct fv_connection_dirty_state, one for each
+         * player.
+         */
         struct fv_buffer dirty_players;
 
         uint8_t read_buf[1024];
@@ -234,13 +240,15 @@ write_player_state(struct fv_connection *conn,
         struct fv_player *player =
                 fv_playerbase_get_player_by_num(conn->playerbase, player_num);
         int wrote;
-        uint8_t *state = conn->dirty_players.data + player_num;
+        struct fv_connection_dirty_state *state =
+                (struct fv_connection_dirty_state *) conn->dirty_players.data +
+                player_num;
 
         /* We don't send any information about the player belonging to
          * this client
          */
         if (player == conn->player) {
-                *state = 0;
+                state->flags = 0;
                 return true;
         }
 
@@ -250,7 +258,7 @@ write_player_state(struct fv_connection *conn,
         if (player_num >= conn->player->num)
                 player_num--;
 
-        if (*state & FV_PLAYER_STATE_POSITION) {
+        if (state->flags & FV_PLAYER_STATE_POSITION) {
                 wrote = write_command(conn,
 
                                       FV_PROTO_PLAYER_POSITION,
@@ -273,7 +281,7 @@ write_player_state(struct fv_connection *conn,
                         return false;
 
                 conn->write_buf_pos += wrote;
-                *state &= ~FV_PLAYER_STATE_POSITION;
+                state->flags &= ~FV_PLAYER_STATE_POSITION;
         }
 
         return true;
@@ -324,6 +332,8 @@ write_pong(struct fv_connection *conn)
 static void
 fill_write_buf(struct fv_connection *conn)
 {
+        struct fv_connection_dirty_state *state;
+        size_t new_dirty_size;
         int n_players;
         int wrote;
         int i;
@@ -360,11 +370,18 @@ fill_write_buf(struct fv_connection *conn)
                 conn->n_players = n_players;
         }
 
-        if (conn->dirty_players.length > n_players)
-                fv_buffer_set_length(&conn->dirty_players, n_players);
+        new_dirty_size = n_players * sizeof (struct fv_connection_dirty_state);
 
-        for (i = 0; i < conn->dirty_players.length; i++) {
-                if (conn->dirty_players.data[i]) {
+        if (conn->dirty_players.length > new_dirty_size)
+                fv_buffer_set_length(&conn->dirty_players, new_dirty_size);
+
+        for (i = 0;
+             i < (conn->dirty_players.length /
+                  sizeof (struct fv_connection_dirty_state));
+             i++) {
+                state = (struct fv_connection_dirty_state *)
+                        conn->dirty_players.data + i;
+                if (state->flags & FV_PLAYER_STATE_ALL) {
                         if (!write_player_state(conn, i))
                                 return;
                 }
@@ -935,7 +952,9 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
                              const struct fv_netaddress *remote_address)
 {
         struct fv_connection *conn;
+        struct fv_connection_dirty_state *state;
         int n_players;
+        int i;
 
         conn = fv_alloc(sizeof *conn);
 
@@ -969,8 +988,14 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
         conn->last_update_time = fv_main_context_get_monotonic_clock(NULL);
 
         n_players = fv_playerbase_get_n_players(playerbase);
-        fv_buffer_set_length(&conn->dirty_players, n_players);
-        memset(conn->dirty_players.data, FV_PLAYER_STATE_ALL, n_players);
+        fv_buffer_set_length(&conn->dirty_players,
+                             n_players *
+                             sizeof (struct fv_connection_dirty_state));
+        for (i = 0; i < n_players; i++) {
+                state = (struct fv_connection_dirty_state *)
+                        conn->dirty_players.data + i;
+                state->flags = FV_PLAYER_STATE_ALL;
+        }
 
         return conn;
 }
@@ -1055,12 +1080,28 @@ fv_connection_get_player(struct fv_connection *conn)
         return conn->player;
 }
 
+static void
+reserve_dirty_player(struct fv_connection *conn,
+                     int player_num)
+{
+        int old_length = conn->dirty_players.length;
+        int new_length = ((player_num + 1) *
+                          sizeof (struct fv_connection_dirty_state));
+
+        if (old_length < new_length) {
+                fv_buffer_set_length(&conn->dirty_players, new_length);
+                memset(conn->dirty_players.data + old_length,
+                       0,
+                       new_length - old_length);
+        }
+}
+
 void
 fv_connection_dirty_player(struct fv_connection *conn,
                            int player_num,
-                           int state)
+                           int state_flags)
 {
-        int old_length = conn->dirty_players.length;
+        struct fv_connection_dirty_state *state;
 
         /* We don't send any information about the player that the
          * connection is controlling.
@@ -1068,14 +1109,12 @@ fv_connection_dirty_player(struct fv_connection *conn,
         if (conn->player && conn->player->num == player_num)
                 return;
 
-        if (old_length <= player_num) {
-                fv_buffer_set_length(&conn->dirty_players, player_num + 1);
-                memset(conn->dirty_players.data + old_length,
-                       0,
-                       player_num + 1 - old_length);
-        }
+        reserve_dirty_player(conn, player_num);
 
-        conn->dirty_players.data[player_num] |= state;
+        state = ((struct fv_connection_dirty_state *) conn->dirty_players.data +
+                 player_num);
+        state->flags |= state_flags;
+
         conn->consistent = false;
 
         update_poll_flags(conn);

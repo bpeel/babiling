@@ -95,7 +95,7 @@ fv_connection_get_player(struct fv_connection *conn);
 void
 fv_connection_dirty_player(struct fv_connection *conn,
                            int player_num,
-                           int state);
+                           int state_flags);
 
 void
 fv_connection_dirty_n_players(struct fv_connection *conn);
