@@ -26,6 +26,18 @@
 
 #include <stdint.h>
 
+#include "fv-proto.h"
+
+/* Buffer enough speech data for 2 seconds */
+#define FV_PLAYER_MAX_PENDING_SPEECHES (2000 / FV_PROTO_SPEECH_TIME)
+
+struct fv_player_speech {
+        _Static_assert(FV_PROTO_MAX_SPEECH_SIZE <= 255,
+                       "The maximum speech size is too big for a uint8_t");
+        uint8_t size;
+        uint8_t packet[FV_PROTO_MAX_SPEECH_SIZE];
+};
+
 struct fv_player {
         /* This is the randomly generated globally unique ID for the
          * player that is used like a password for the clients.
@@ -51,6 +63,11 @@ struct fv_player {
          * garbage collection.
          */
         uint64_t last_update_time;
+
+        /* A rotating buffer of speech packets */
+        struct fv_player_speech speech_queue[FV_PLAYER_MAX_PENDING_SPEECHES];
+        /* The slot to use when the next speech packet is added */
+        int next_speech;
 };
 
 #define FV_PLAYER_STATE_POSITION (1 << 0)

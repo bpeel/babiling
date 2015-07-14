@@ -24,20 +24,17 @@
 #include "config.h"
 
 #include "fv-player.h"
-#include "fv-slice.h"
 #include "fv-main-context.h"
-
-FV_SLICE_ALLOCATOR(struct fv_player,
-                   fv_player_allocator);
 
 struct fv_player *
 fv_player_new(uint64_t id)
 {
-        struct fv_player *player = fv_slice_alloc(&fv_player_allocator);
+        struct fv_player *player = fv_alloc(sizeof *player);
 
         player->id = id;
         player->ref_count = 0;
         player->last_update_time = fv_main_context_get_monotonic_clock(NULL);
+        player->next_speech = 0;
 
         return player;
 }
@@ -45,5 +42,5 @@ fv_player_new(uint64_t id)
 void
 fv_player_free(struct fv_player *player)
 {
-        fv_slice_free(&fv_player_allocator, player);
+        fv_free(player);
 }
