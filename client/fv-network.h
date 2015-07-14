@@ -22,6 +22,7 @@
 
 #include <stdint.h>
 
+#include "fv-audio-buffer.h"
 #include "fv-person.h"
 #include "fv-buffer.h"
 
@@ -48,7 +49,8 @@ typedef void
                                    void *user_data);
 
 struct fv_network *
-fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
+fv_network_new(struct fv_audio_buffer *audio_buffer,
+               fv_network_consistent_event_cb consistent_event_cb,
                void *user_data);
 
 void

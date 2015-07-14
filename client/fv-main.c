@@ -1332,7 +1332,7 @@ main(int argc, char **argv)
 
 #endif /* EMSCRIPTEN */
 
-        data.nw = fv_network_new(consistent_event_cb, &data);
+        data.nw = fv_network_new(data.audio_buffer, consistent_event_cb, &data);
         if (data.nw == NULL) {
                 ret = EXIT_FAILURE;
                 goto out_npcs;

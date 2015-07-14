@@ -20,6 +20,7 @@
 #include "config.h"
 
 struct fv_network_base {
+        struct fv_audio_buffer *audio_buffer;
         struct fv_recorder *recorder;
 
         bool sent_hello;
@@ -318,6 +319,34 @@ handle_player_position(struct fv_network *nw,
         return true;
 }
 
+static bool
+handle_player_speech(struct fv_network *nw,
+                     const uint8_t *payload,
+                     size_t payload_length)
+{
+        struct fv_network_base *base = fv_network_get_base(nw);
+        const uint8_t *packet;
+        size_t packet_size;
+        uint16_t player_num;
+
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT16, &player_num,
+                                   FV_PROTO_TYPE_BLOB,
+                                   &packet_size,
+                                   &packet,
+                                   FV_PROTO_TYPE_NONE)) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        fv_audio_buffer_add_packet(base->audio_buffer,
+                                   player_num,
+                                   packet,
+                                   packet_size);
+
+        return true;
+}
 
 static bool
 handle_message(struct fv_network *nw,
@@ -342,6 +371,11 @@ handle_message(struct fv_network *nw,
                 return handle_player_position(nw,
                                               message_payload,
                                               message_payload_length);
+
+        case FV_PROTO_PLAYER_SPEECH:
+                return handle_player_speech(nw,
+                                            message_payload,
+                                            message_payload_length);
         }
 
         assert(!"unknown message_id");

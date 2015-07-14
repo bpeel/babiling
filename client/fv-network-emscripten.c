@@ -423,11 +423,13 @@ fv_network_write_timeout_cb(struct fv_network *nw)
 }
 
 struct fv_network *
-fv_network_new(fv_network_consistent_event_cb consistent_event_cb,
+fv_network_new(struct fv_audio_buffer *audio_buffer,
+               fv_network_consistent_event_cb consistent_event_cb,
                void *user_data)
 {
         struct fv_network *nw = fv_alloc(sizeof *nw);
 
+        nw->base.audio_buffer = audio_buffer;
         nw->base.consistent_event_cb = consistent_event_cb;
         nw->base.user_data = user_data;
 
