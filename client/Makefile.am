@@ -11,6 +11,7 @@ endif
 AM_CFLAGS = \
 	$(GL_CFLAGS) \
 	$(SDL_CFLAGS) \
+	$(OPUS_CFLAGS) \
 	$(FINVENKISTO_EXTRA_CFLAGS) \
 	-I$(srcdir)/../common \
 	$(NULL)
@@ -53,6 +54,8 @@ sources = \
 	fv-person.h \
 	fv-person-painter.c \
 	fv-person-painter.h \
+	fv-recorder.c \
+	fv-recorder.h \
 	fv-shader-data.c \
 	fv-shader-data.h \
 	fv-transform.c \
@@ -69,6 +72,7 @@ fv-map.c : fv-map.png make-map.py
 
 ldadd = \
 	$(SDL_LIBS) \
+	$(OPUS_LIBS) \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	rply/librply.a \
 	$(builddir)/../common/libcommon.a \
