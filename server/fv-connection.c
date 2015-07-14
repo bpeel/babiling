@@ -32,6 +32,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <opus.h>
 
 #include "fv-connection.h"
 #include "fv-proto.h"
@@ -47,6 +48,10 @@
 #include "sha1.h"
 
 struct fv_connection_dirty_state {
+        _Static_assert(FV_PLAYER_MAX_PENDING_SPEECHES <= 255,
+                       "The maximum number of pending speeches is to big to "
+                       "fit in a uint8_t");
+        uint8_t pending_speeches;
         uint8_t flags;
 };
 
@@ -288,6 +293,56 @@ write_player_state(struct fv_connection *conn,
 }
 
 static bool
+write_player_speech(struct fv_connection *conn,
+                    int player_num)
+{
+        struct fv_player *player =
+                fv_playerbase_get_player_by_num(conn->playerbase, player_num);
+        int wrote;
+        struct fv_connection_dirty_state *state =
+                (struct fv_connection_dirty_state *) conn->dirty_players.data +
+                player_num;
+        unsigned int n_pending_speeches = state->pending_speeches;
+        unsigned int speech_num = ((player->next_speech +
+                                    FV_PLAYER_MAX_PENDING_SPEECHES -
+                                    n_pending_speeches) %
+                                   FV_PLAYER_MAX_PENDING_SPEECHES);
+
+        /* We don't send any speeches belonging to this client */
+        if (player == conn->player) {
+                state->pending_speeches = 0;
+                return true;
+        }
+
+        /* The player numbers that are sent to the client are faked in
+         * order to exclude the client's own player
+         */
+        if (player_num >= conn->player->num)
+                player_num--;
+
+        wrote = write_command(conn,
+
+                              FV_PROTO_PLAYER_SPEECH,
+
+                              FV_PROTO_TYPE_UINT16,
+                              (uint16_t) player_num,
+
+                              FV_PROTO_TYPE_BLOB,
+                              (size_t) player->speech_queue[speech_num].size,
+                              player->speech_queue[speech_num].packet,
+
+                              FV_PROTO_TYPE_NONE);
+
+        if (wrote == -1)
+                return false;
+
+        conn->write_buf_pos += wrote;
+        state->pending_speeches = n_pending_speeches - 1;
+
+        return true;
+}
+
+static bool
 write_player_id(struct fv_connection *conn)
 {
         int wrote;
@@ -383,6 +438,19 @@ fill_write_buf(struct fv_connection *conn)
                         conn->dirty_players.data + i;
                 if (state->flags & FV_PLAYER_STATE_ALL) {
                         if (!write_player_state(conn, i))
+                                return;
+                }
+        }
+
+        /* Write pending speeches after updating the player state */
+        for (i = 0;
+             i < (conn->dirty_players.length /
+                  sizeof (struct fv_connection_dirty_state));
+             i++) {
+                state = (struct fv_connection_dirty_state *)
+                        conn->dirty_players.data + i;
+                while (state->pending_speeches > 0) {
+                        if (!write_player_speech(conn, i))
                                 return;
                 }
         }
@@ -516,6 +584,69 @@ handle_keep_alive(struct fv_connection *conn)
 }
 
 static bool
+handle_speech(struct fv_connection *conn)
+{
+        struct fv_connection_speech_event event;
+        int n_samples, n_channels;
+
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
+
+                                   FV_PROTO_TYPE_BLOB,
+                                   &event.packet_size,
+                                   &event.packet,
+
+                                   FV_PROTO_TYPE_NONE)) {
+                fv_log("Invalid speech command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        if (event.packet_size > FV_PROTO_MAX_SPEECH_SIZE) {
+                fv_log("Client %s sent a speech packet that is too long %i",
+                       conn->remote_address_string,
+                       (int) event.packet_size);
+                set_error_state(conn);
+                return false;
+        }
+
+        n_samples = opus_packet_get_nb_samples(event.packet,
+                                               event.packet_size,
+                                               48000);
+        n_channels = opus_packet_get_nb_channels(event.packet);
+
+        if (n_samples < 0 || n_channels < 0) {
+                fv_log("Client %s sent an invalid speech packet",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        if (n_channels != 1) {
+                fv_log("Client %s sent a speech packet with an invalid number "
+                       "of channels (%i)",
+                       conn->remote_address_string,
+                       n_channels);
+                return false;
+        }
+
+        if (n_samples != 48000 * FV_PROTO_SPEECH_TIME / 1000) {
+                fv_log("Client %s sent a speech packet with an invalid length "
+                       "(%fms)",
+                       conn->remote_address_string,
+                       n_samples / 48000.0f * 1000.0f);
+                return false;
+        }
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_SPEECH,
+                          &event.base);
+
+        return true;
+}
+
+static bool
 process_message(struct fv_connection *conn)
 {
         switch (conn->message_data[0]) {
@@ -527,6 +658,8 @@ process_message(struct fv_connection *conn)
                 return handle_update_position(conn);
         case FV_PROTO_KEEP_ALIVE:
                 return handle_keep_alive(conn);
+        case FV_PROTO_SPEECH:
+                return handle_speech(conn);
         }
 
         fv_log("Client %s sent an unknown message ID (0x%u)",
@@ -995,6 +1128,7 @@ fv_connection_new_for_socket(struct fv_playerbase *playerbase,
                 state = (struct fv_connection_dirty_state *)
                         conn->dirty_players.data + i;
                 state->flags = FV_PLAYER_STATE_ALL;
+                state->pending_speeches = 0;
         }
 
         return conn;
@@ -1115,6 +1249,37 @@ fv_connection_dirty_player(struct fv_connection *conn,
                  player_num);
         state->flags |= state_flags;
 
+        conn->consistent = false;
+
+        update_poll_flags(conn);
+}
+
+void
+fv_connection_queue_speech(struct fv_connection *conn,
+                           int player_num)
+{
+        struct fv_connection_dirty_state *state;
+
+        /* We don't send any information about the player that the
+         * connection is controlling.
+         */
+        if (conn->player && conn->player->num == player_num)
+                return;
+
+        reserve_dirty_player(conn, player_num);
+
+        state = ((struct fv_connection_dirty_state *) conn->dirty_players.data +
+                 player_num);
+
+        /* If the entire circular buffer is already pending then the
+         * client is reading too slowly and we'll have to just drop
+         * the earlier packets. This will automatically happen if we
+         * just avoid changing the number of pending speeches.
+         */
+        if (state->pending_speeches >= FV_PLAYER_MAX_PENDING_SPEECHES)
+                return;
+
+        state->pending_speeches++;
         conn->consistent = false;
 
         update_poll_flags(conn);

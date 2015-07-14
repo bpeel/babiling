@@ -5,6 +5,7 @@ bin_PROGRAMS = \
 AM_CFLAGS = \
 	$(FINVENKISTO_EXTRA_CFLAGS) \
 	$(SERVER_EXTRA_CFLAGS) \
+	$(OPUS_CFLAGS) \
 	-I$(srcdir)/../common \
 	$(NULL)
 
@@ -50,5 +51,6 @@ finvenkisto_server_LDFLAGS = \
 finvenkisto_server_LDADD = \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
+	$(OPUS_LIBS) \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)

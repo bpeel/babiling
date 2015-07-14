@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "fv-error.h"
 #include "fv-netaddress.h"
@@ -41,6 +42,7 @@ enum fv_connection_event_type {
         FV_CONNECTION_EVENT_NEW_PLAYER,
         FV_CONNECTION_EVENT_RECONNECT,
         FV_CONNECTION_EVENT_UPDATE_POSITION,
+        FV_CONNECTION_EVENT_SPEECH,
 };
 
 struct fv_connection_event {
@@ -60,6 +62,13 @@ struct fv_connection_update_position_event {
         uint32_t x_position;
         uint32_t y_position;
         uint16_t direction;
+};
+
+struct fv_connection_speech_event {
+        struct fv_connection_event base;
+
+        const uint8_t *packet;
+        size_t packet_size;
 };
 
 struct fv_connection;
@@ -96,6 +105,10 @@ void
 fv_connection_dirty_player(struct fv_connection *conn,
                            int player_num,
                            int state_flags);
+
+void
+fv_connection_queue_speech(struct fv_connection *conn,
+                           int player_num);
 
 void
 fv_connection_dirty_n_players(struct fv_connection *conn);

@@ -312,6 +312,41 @@ handle_reconnect(struct fv_network *nw,
 }
 
 static bool
+handle_speech(struct fv_network *nw,
+              struct fv_network_client *client,
+              struct fv_connection_speech_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        struct fv_player *player =
+                fv_connection_get_player(client->connection);
+        struct fv_player_speech *player_speech;
+        struct fv_network_client *other_client;
+
+
+        if (player == NULL) {
+                fv_log("Client %s sent a speech before a hello "
+                       "message",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        player_speech = player->speech_queue + player->next_speech;
+        memcpy(player_speech->packet, event->packet, event->packet_size);
+        player_speech->size = event->packet_size;
+        player->next_speech = ((player->next_speech + 1) %
+                               FV_PLAYER_MAX_PENDING_SPEECHES);
+
+        fv_list_for_each(other_client, &nw->clients, link) {
+                fv_connection_queue_speech(other_client->connection,
+                                           player->num);
+        }
+
+        return true;
+}
+
+static bool
 connection_event_cb(struct fv_listener *listener,
                     void *data)
 {
@@ -337,8 +372,14 @@ connection_event_cb(struct fv_listener *listener,
                 return handle_reconnect(nw, client, de);
         }
 
+        case FV_CONNECTION_EVENT_SPEECH: {
+                struct fv_connection_speech_event *de = (void *) event;
+                return handle_speech(nw, client, de);
+        }
+
         case FV_CONNECTION_EVENT_NEW_PLAYER:
                 return handle_new_player(nw, client, event);
+
         }
 
         return true;
