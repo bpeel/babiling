@@ -21,6 +21,8 @@ AM_CFLAGS += $(PULSE_SIMPLE_CFLAGS)
 endif
 
 sources = \
+	fv-audio-buffer.c \
+	fv-audio-buffer.h \
 	fv-array-object.c \
 	fv-array-object.h \
 	fv-data.c \
