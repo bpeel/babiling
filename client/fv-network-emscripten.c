@@ -422,12 +422,26 @@ fv_network_write_timeout_cb(struct fv_network *nw)
         }
 }
 
+static void
+recorder_cb(void *user_data)
+{
+        struct fv_network *nw = user_data;
+
+        update_write_timeout(nw);
+}
+
 struct fv_network *
 fv_network_new(struct fv_audio_buffer *audio_buffer,
                fv_network_consistent_event_cb consistent_event_cb,
                void *user_data)
 {
         struct fv_network *nw = fv_alloc(sizeof *nw);
+
+        nw->base.recorder = fv_recorder_new(recorder_cb, nw);
+        if (nw->base.recorder == NULL) {
+                fv_free(nw);
+                return NULL;
+        }
 
         nw->base.audio_buffer = audio_buffer;
         nw->base.consistent_event_cb = consistent_event_cb;
@@ -471,6 +485,8 @@ void
 fv_network_free(struct fv_network *nw)
 {
         destroy_base(&nw->base);
+
+        fv_recorder_free(nw->base.recorder);
 
         cancel_connect_timeout(nw);
         cancel_write_timeout(nw);
