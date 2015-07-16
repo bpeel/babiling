@@ -42,6 +42,7 @@
 #include "fv-list.h"
 #include "fv-recorder.h"
 #include "fv-error-message.h"
+#include "fv-mutex.h"
 
 #include "fv-network-common.h"
 
@@ -62,7 +63,7 @@ struct fv_network_host_resolved {
 
 struct fv_network {
         SDL_Thread *thread;
-        SDL_mutex *mutex;
+        struct fv_mutex *mutex;
         int wakeup_pipe[2];
         int sock;
 
@@ -568,7 +569,7 @@ thread_func(void *user_data)
         int timeout;
 
         while (true) {
-                SDL_LockMutex(nw->mutex);
+                fv_mutex_lock(nw->mutex);
 
                 quit = nw->quit;
 
@@ -589,7 +590,7 @@ thread_func(void *user_data)
                         }
                 }
 
-                SDL_UnlockMutex(nw->mutex);
+                fv_mutex_unlock(nw->mutex);
 
                 if (quit)
                         break;
@@ -720,7 +721,7 @@ fv_network_new(struct fv_audio_buffer *audio_buffer,
                 goto error_base;
         }
 
-        nw->mutex = SDL_CreateMutex();
+        nw->mutex = fv_mutex_new();
         if (nw->mutex == NULL) {
                 fv_error_message("Error creating mutex: %s", SDL_GetError());
                 goto error_pipe;
@@ -743,7 +744,7 @@ fv_network_new(struct fv_audio_buffer *audio_buffer,
 error_recorder:
         fv_recorder_free(nw->base.recorder);
 error_mutex:
-        SDL_DestroyMutex(nw->mutex);
+        fv_mutex_free(nw->mutex);
 error_pipe:
         fv_close(nw->wakeup_pipe[0]);
         fv_close(nw->wakeup_pipe[1]);
@@ -757,11 +758,11 @@ void
 fv_network_update_player(struct fv_network *nw,
                          const struct fv_person *player)
 {
-        SDL_LockMutex(nw->mutex);
+        fv_mutex_lock(nw->mutex);
         nw->queued_player = *player;
         nw->player_queued = true;
         fv_network_wakeup_thread(nw);
-        SDL_UnlockMutex(nw->mutex);
+        fv_mutex_unlock(nw->mutex);
 }
 
 void
@@ -774,21 +775,21 @@ fv_network_add_host(struct fv_network *nw,
         host->base.resolved = false;
         strcpy(host->name, name);
 
-        SDL_LockMutex(nw->mutex);
+        fv_mutex_lock(nw->mutex);
 
         fv_list_insert(nw->queued_hosts.prev, &host->base.link);
 
         fv_network_wakeup_thread(nw);
 
-        SDL_UnlockMutex(nw->mutex);
+        fv_mutex_unlock(nw->mutex);
 }
 
 void
 fv_network_free(struct fv_network *nw)
 {
-        SDL_LockMutex(nw->mutex);
+        fv_mutex_lock(nw->mutex);
         nw->quit = true;
-        SDL_UnlockMutex(nw->mutex);
+        fv_mutex_unlock(nw->mutex);
 
         fv_network_wakeup_thread(nw);
 
@@ -796,7 +797,7 @@ fv_network_free(struct fv_network *nw)
 
         SDL_WaitThread(nw->thread, NULL /* status */);
 
-        SDL_DestroyMutex(nw->mutex);
+        fv_mutex_free(nw->mutex);
 
         destroy_base(&nw->base);
 

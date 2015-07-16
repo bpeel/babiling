@@ -25,6 +25,7 @@
 #include "fv-microphone.h"
 #include "fv-util.h"
 #include "fv-error-message.h"
+#include "fv-mutex.h"
 
 struct fv_microphone {
         pa_simple *pa;
@@ -34,7 +35,7 @@ struct fv_microphone {
         fv_microphone_callback callback;
         void *user_data;
 
-        SDL_mutex *mutex;
+        struct fv_mutex *mutex;
         bool quit;
 };
 
@@ -47,11 +48,11 @@ thread_func(void *user_data)
         int res;
 
         while (true) {
-                SDL_LockMutex(mic->mutex);
+                fv_mutex_lock(mic->mutex);
 
                 quit = mic->quit;
 
-                SDL_UnlockMutex(mic->mutex);
+                fv_mutex_unlock(mic->mutex);
 
                 if (quit)
                         break;
@@ -101,7 +102,7 @@ fv_microphone_new(fv_microphone_callback callback,
                 goto error;
         }
 
-        mic->mutex = SDL_CreateMutex();
+        mic->mutex = fv_mutex_new();
         if (mic->mutex == NULL) {
                 fv_error_message("Error creating mutex: %s", SDL_GetError());
                 goto error_pa;
@@ -120,7 +121,7 @@ fv_microphone_new(fv_microphone_callback callback,
 error_pa:
         pa_simple_free(mic->pa);
 error_mutex:
-        SDL_DestroyMutex(mic->mutex);
+        fv_mutex_free(mic->mutex);
 error:
         fv_free(mic);
 
@@ -130,13 +131,13 @@ error:
 void
 fv_microphone_free(struct fv_microphone *mic)
 {
-        SDL_LockMutex(mic->mutex);
+        fv_mutex_lock(mic->mutex);
         mic->quit = true;
-        SDL_UnlockMutex(mic->mutex);
+        fv_mutex_unlock(mic->mutex);
 
         SDL_WaitThread(mic->thread, NULL /* status */);
 
-        SDL_DestroyMutex(mic->mutex);
+        fv_mutex_free(mic->mutex);
 
         pa_simple_free(mic->pa);
 

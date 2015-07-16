@@ -29,6 +29,7 @@
 #include "fv-util.h"
 #include "fv-proto.h"
 #include "fv-error-message.h"
+#include "fv-mutex.h"
 
 #define FV_RECORDER_RATE 48000
 #define FV_RECORDER_SAMPLES_PER_PACKET (FV_RECORDER_RATE *      \
@@ -49,7 +50,7 @@
 #define FV_RECORDER_MAX_BUFFER (3000 / FV_PROTO_SPEECH_TIME)
 
 struct fv_recorder {
-        SDL_mutex *mutex;
+        struct fv_mutex *mutex;
 
         struct fv_microphone *mic;
 
@@ -104,9 +105,9 @@ fv_recorder_has_packet(struct fv_recorder *recorder)
 {
         bool res;
 
-        SDL_LockMutex(recorder->mutex);
+        fv_mutex_lock(recorder->mutex);
         res = recorder->emitting && recorder->n_packets > 0;
-        SDL_UnlockMutex(recorder->mutex);
+        fv_mutex_unlock(recorder->mutex);
 
         return res;
 }
@@ -150,7 +151,7 @@ fv_recorder_get_packet(struct fv_recorder *recorder,
 
         assert(fv_recorder_has_packet(recorder));
 
-        SDL_LockMutex(recorder->mutex);
+        fv_mutex_lock(recorder->mutex);
 
         packet_size = recorder->ring_buffer[recorder->ring_buffer_start];
 
@@ -170,7 +171,7 @@ fv_recorder_get_packet(struct fv_recorder *recorder,
         res = packet_size;
 
 out:
-        SDL_UnlockMutex(recorder->mutex);
+        fv_mutex_unlock(recorder->mutex);
 
         return res;
 }
@@ -286,7 +287,7 @@ microphone_cb(const int16_t *data,
         int to_copy;
         bool packet_added = false;
 
-        SDL_LockMutex(recorder->mutex);
+        fv_mutex_lock(recorder->mutex);
 
         /* Try to complete any incomplete packet that we received last time */
         if (recorder->raw_sample_count > 0) {
@@ -328,7 +329,7 @@ out:
         if (!recorder->emitting)
                 packet_added = false;
 
-        SDL_UnlockMutex(recorder->mutex);
+        fv_mutex_unlock(recorder->mutex);
 
         if (packet_added)
                 recorder->callback(recorder->user_data);
@@ -354,7 +355,7 @@ fv_recorder_new(fv_recorder_callback callback,
         recorder->n_packets = 0;
         recorder->emitting = false;
 
-        recorder->mutex = SDL_CreateMutex();
+        recorder->mutex = fv_mutex_new();
         if (recorder->mutex == NULL) {
                 fv_error_message("Error creating mutex");
                 goto error;
@@ -383,7 +384,7 @@ fv_recorder_new(fv_recorder_callback callback,
 error_opus:
         opus_encoder_destroy(recorder->encoder);
 error_mutex:
-        SDL_DestroyMutex(recorder->mutex);
+        fv_mutex_free(recorder->mutex);
         error:
         fv_free(recorder->ring_buffer);
         fv_free(recorder);
@@ -396,7 +397,7 @@ fv_recorder_free(struct fv_recorder *recorder)
 {
         fv_microphone_free(recorder->mic);
 
-        SDL_DestroyMutex(recorder->mutex);
+        fv_mutex_free(recorder->mutex);
 
         opus_encoder_destroy(recorder->encoder);
 

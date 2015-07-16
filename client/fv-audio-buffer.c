@@ -26,9 +26,10 @@
 #include "fv-audio-buffer.h"
 #include "fv-util.h"
 #include "fv-buffer.h"
+#include "fv-mutex.h"
 
 struct fv_audio_buffer {
-        SDL_mutex *mutex;
+        struct fv_mutex *mutex;
 
         int rate;
 
@@ -55,7 +56,7 @@ fv_audio_buffer_new(int rate)
 {
         struct fv_audio_buffer *ab = fv_alloc(sizeof *ab);
 
-        ab->mutex = SDL_CreateMutex();
+        ab->mutex = fv_mutex_new();
 
         ab->size = 512;
         ab->buffer = fv_alloc(ab->size * sizeof *ab->buffer);
@@ -144,7 +145,7 @@ fv_audio_buffer_add_packet(struct fv_audio_buffer *ab,
         int to_copy;
         int start;
 
-        SDL_LockMutex(ab->mutex);
+        fv_mutex_lock(ab->mutex);
 
         channel = get_channel(ab, channel_num);
 
@@ -192,7 +193,7 @@ fv_audio_buffer_add_packet(struct fv_audio_buffer *ab,
         ab->length = MAX(ab->length, channel->offset);
 
 done:
-        SDL_UnlockMutex(ab->mutex);
+        fv_mutex_unlock(ab->mutex);
 }
 
 void
@@ -205,7 +206,7 @@ fv_audio_buffer_get(struct fv_audio_buffer *ab,
         int from_buffer, to_copy;
         int i;
 
-        SDL_LockMutex(ab->mutex);
+        fv_mutex_lock(ab->mutex);
 
         from_buffer = MIN(data_length, ab->length);
 
@@ -235,7 +236,7 @@ fv_audio_buffer_get(struct fv_audio_buffer *ab,
                         channels[i].offset -= from_buffer;
         }
 
-        SDL_UnlockMutex(ab->mutex);
+        fv_mutex_unlock(ab->mutex);
 }
 
 void
@@ -256,5 +257,5 @@ fv_audio_buffer_free(struct fv_audio_buffer *ab)
 
         fv_buffer_destroy(&ab->channels);
 
-        SDL_DestroyMutex(ab->mutex);
+        fv_mutex_free(ab->mutex);
 }

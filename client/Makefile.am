@@ -50,6 +50,7 @@ sources = \
 	fv-microphone.h \
 	fv-model.c \
 	fv-model.h \
+	fv-mutex.h \
 	fv-network.h \
 	fv-network-common.h \
 	fv-paint-state.h \

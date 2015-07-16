@@ -41,6 +41,7 @@
 #include "fv-bitmask.h"
 #include "fv-pointer-array.h"
 #include "fv-audio-buffer.h"
+#include "fv-mutex.h"
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
@@ -200,7 +201,7 @@ struct data {
          * asynchronously. It is copied into the fv_logic just before
          * updating it. It is always accessed with the mutex locked.
          */
-        SDL_mutex *npcs_mutex;
+        struct fv_mutex *npcs_mutex;
         /* Array of fv_person */
         struct fv_buffer npcs;
         /* Bitmask with a bit for each npc */
@@ -810,7 +811,7 @@ update_npcs(struct data *data)
         const struct fv_person *npcs;
         int npc_num;
 
-        SDL_LockMutex(data->npcs_mutex);
+        fv_mutex_lock(data->npcs_mutex);
 
         npcs = (const struct fv_person *) data->npcs.data;
 
@@ -826,7 +827,7 @@ update_npcs(struct data *data)
 
         memset(data->dirty_npcs.data, 0, data->dirty_npcs.length);
 
-        SDL_UnlockMutex(data->npcs_mutex);
+        fv_mutex_unlock(data->npcs_mutex);
 #endif
 }
 
@@ -939,7 +940,7 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
         SDL_Event redraw_event = { .type = data->redraw_user_event };
         int player_num;
 
-        SDL_LockMutex(data->npcs_mutex);
+        fv_mutex_lock(data->npcs_mutex);
 
         fv_buffer_set_length(&data->npcs,
                              sizeof (struct fv_person) * event->n_players);
@@ -955,7 +956,7 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
 
         SDL_PushEvent(&redraw_event);
 
-        SDL_UnlockMutex(data->npcs_mutex);
+        fv_mutex_unlock(data->npcs_mutex);
 }
 
 #endif /* EMSCRIPTEN */
@@ -1318,7 +1319,7 @@ main(int argc, char **argv)
 
 #ifndef EMSCRIPTEN
 
-        data.npcs_mutex = SDL_CreateMutex();
+        data.npcs_mutex = fv_mutex_new();
         if (data.npcs_mutex == NULL) {
                 fv_error_message("Failed to create mutex");
                 ret = EXIT_FAILURE;
@@ -1451,7 +1452,7 @@ main(int argc, char **argv)
 #ifndef EMSCRIPTEN
         fv_buffer_destroy(&data.npcs);
         fv_buffer_destroy(&data.dirty_npcs);
-        SDL_DestroyMutex(data.npcs_mutex);
+        fv_mutex_free(data.npcs_mutex);
 #endif /* EMSCRIPTEN */
         close_joysticks(&data);
 #ifndef EMSCRIPTEN
