@@ -170,7 +170,7 @@ create_shader(const char *name,
                 fv_gl.glGetShaderInfoLog(shader, length,
                                          &actual_length,
                                          info_log);
-                if (*info_log)
+                if (*info_log && strcmp(info_log, "(unknown error)"))
                         fprintf(stderr,
                                 "Info log for %s:\n%s\n",
                                 name, info_log);
