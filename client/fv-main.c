@@ -1263,14 +1263,14 @@ open_audio_device(struct data *data)
                                     false, /* iscapture */
                                     &desired,
                                     &obtained,
-                                    SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+                                    0 /* allowed changes */);
         if (data->audio_device == 0) {
                 fv_error_message("Error opening audio device: %s",
                                  SDL_GetError());
                 return false;
         }
 
-        data->audio_buffer = fv_audio_buffer_new(obtained.freq);
+        data->audio_buffer = fv_audio_buffer_new();
 
         SDL_PauseAudioDevice(data->audio_device, false);
 

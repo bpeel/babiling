@@ -27,11 +27,10 @@
 #include "fv-util.h"
 #include "fv-buffer.h"
 #include "fv-mutex.h"
+#include "fv-speech.h"
 
 struct fv_audio_buffer {
         struct fv_mutex *mutex;
-
-        int rate;
 
         struct fv_buffer channels;
 
@@ -52,7 +51,7 @@ struct fv_audio_buffer_channel {
 };
 
 struct fv_audio_buffer *
-fv_audio_buffer_new(int rate)
+fv_audio_buffer_new(void)
 {
         struct fv_audio_buffer *ab = fv_alloc(sizeof *ab);
 
@@ -62,7 +61,6 @@ fv_audio_buffer_new(int rate)
         ab->buffer = fv_alloc(ab->size * sizeof *ab->buffer);
         ab->start = 0;
         ab->length = 0;
-        ab->rate = rate;
 
         memset(ab->buffer, 0, ab->size * sizeof *ab->buffer);
 
@@ -94,7 +92,7 @@ get_channel(struct fv_audio_buffer *ab,
                    channel_num);
 
         if (channel->decoder == NULL) {
-                channel->decoder = opus_decoder_create(ab->rate,
+                channel->decoder = opus_decoder_create(FV_SPEECH_SAMPLE_RATE,
                                                        1, /* channels */
                                                        &error);
                 if (error != OPUS_OK)
@@ -154,7 +152,7 @@ fv_audio_buffer_add_packet(struct fv_audio_buffer *ab,
 
         n_samples = opus_packet_get_nb_samples(packet_data,
                                                packet_length,
-                                               ab->rate);
+                                               FV_SPEECH_SAMPLE_RATE);
 
         /* Ignore invalid packets */
         if (n_samples < 0)

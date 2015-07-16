@@ -24,7 +24,7 @@
 #include <stdlib.h>
 
 struct fv_audio_buffer *
-fv_audio_buffer_new(int rate);
+fv_audio_buffer_new(void);
 
 /* Thread safe */
 void
