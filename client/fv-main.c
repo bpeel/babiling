@@ -42,7 +42,7 @@
 #include "fv-pointer-array.h"
 #include "fv-audio-buffer.h"
 #include "fv-mutex.h"
-#include "fv-speech.h"
+#include "fv-audio-device.h"
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
@@ -190,7 +190,7 @@ struct data {
 
         bool redraw_queued;
 
-        SDL_AudioDeviceID audio_device;
+        struct fv_audio_device *audio_device;
         struct fv_audio_buffer *audio_buffer;
 
 #ifndef EMSCRIPTEN
@@ -1234,47 +1234,15 @@ run_main_loop(struct data *data)
 #endif /* EMSCRIPTEN */
 
 static void
-audio_cb(void *user_data,
-         uint8_t *stream,
-         int len)
+audio_cb(int16_t *buffer,
+         int n_samples,
+         void *user_data)
 {
         struct data *data = user_data;
 
         fv_audio_buffer_get(data->audio_buffer,
-                            (int16_t *) stream,
-                            len / sizeof (int16_t));
-}
-
-static bool
-open_audio_device(struct data *data)
-{
-        SDL_AudioSpec desired, obtained;
-
-        SDL_zero(desired);
-        desired.freq = FV_SPEECH_SAMPLE_RATE;
-        desired.format = AUDIO_S16SYS;
-        desired.channels = 1;
-        desired.samples = 4096;
-        desired.callback = audio_cb;
-        desired.userdata = data;
-
-        data->audio_device =
-                SDL_OpenAudioDevice(NULL, /* default device */
-                                    false, /* iscapture */
-                                    &desired,
-                                    &obtained,
-                                    0 /* allowed changes */);
-        if (data->audio_device == 0) {
-                fv_error_message("Error opening audio device: %s",
-                                 SDL_GetError());
-                return false;
-        }
-
-        data->audio_buffer = fv_audio_buffer_new();
-
-        SDL_PauseAudioDevice(data->audio_device, false);
-
-        return true;
+                            buffer,
+                            n_samples);
 }
 
 int
@@ -1308,9 +1276,12 @@ main(int argc, char **argv)
                 goto out_addresses;
         }
 
-        if (!open_audio_device(&data)) {
+        data.audio_buffer = fv_audio_buffer_new();
+
+        data.audio_device = fv_audio_device_new(audio_cb, &data);
+        if (data.audio_device == NULL) {
                 ret = EXIT_FAILURE;
-                goto out_sdl;
+                goto out_audio_buffer;
         }
 
         data.key_state = 0;
@@ -1459,9 +1430,9 @@ main(int argc, char **argv)
 #ifndef EMSCRIPTEN
  out_audio_device:
 #endif /* EMSCRIPTEN */
-        SDL_CloseAudioDevice(data.audio_device);
+        fv_audio_device_free(data.audio_device);
+ out_audio_buffer:
         fv_audio_buffer_free(data.audio_buffer);
- out_sdl:
         SDL_Quit();
  out_addresses:
         fv_buffer_destroy(&data.server_addresses);

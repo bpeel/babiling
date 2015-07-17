@@ -23,6 +23,7 @@ endif
 sources = \
 	fv-audio-buffer.c \
 	fv-audio-buffer.h \
+	fv-audio-device.h \
 	fv-array-object.c \
 	fv-array-object.h \
 	fv-data.c \
@@ -84,6 +85,7 @@ ldadd = \
 
 finvenkisto_SOURCES = \
 	$(sources) \
+	fv-audio-device-sdl.c \
 	fv-error-message-native.c \
 	fv-network-native.c \
 	fv-image-data-native.c \
@@ -96,6 +98,7 @@ finvenkisto_LDADD = \
 
 finvenkisto_html_SOURCES = \
 	$(sources) \
+	fv-audio-device-sdl.c \
 	fv-error-message-emscripten.c \
 	fv-network-emscripten.c \
 	fv-image-data-emscripten.c \
