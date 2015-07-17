@@ -61,6 +61,7 @@ sources = \
 	fv-recorder.h \
 	fv-shader-data.c \
 	fv-shader-data.h \
+	fv-speech.h \
 	fv-transform.c \
 	fv-transform.h \
 	stb_image.h \

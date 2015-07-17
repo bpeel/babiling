@@ -26,6 +26,7 @@
 #include "fv-util.h"
 #include "fv-error-message.h"
 #include "fv-mutex.h"
+#include "fv-speech.h"
 
 struct fv_microphone {
         pa_simple *pa;
@@ -85,7 +86,7 @@ fv_microphone_new(fv_microphone_callback callback,
 
         ss.format = PA_SAMPLE_S16NE;
         ss.channels = 1;
-        ss.rate = 48000;
+        ss.rate = FV_SPEECH_SAMPLE_RATE;
 
         mic->pa = pa_simple_new(NULL, /* server */
                                 "Finvenkisto",

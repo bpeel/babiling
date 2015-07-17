@@ -42,6 +42,7 @@
 #include "fv-pointer-array.h"
 #include "fv-audio-buffer.h"
 #include "fv-mutex.h"
+#include "fv-speech.h"
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
@@ -1250,7 +1251,7 @@ open_audio_device(struct data *data)
         SDL_AudioSpec desired, obtained;
 
         SDL_zero(desired);
-        desired.freq = 48000;
+        desired.freq = FV_SPEECH_SAMPLE_RATE;
         desired.format = AUDIO_S16SYS;
         desired.channels = 1;
         desired.samples = 4096;

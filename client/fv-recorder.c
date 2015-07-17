@@ -30,9 +30,9 @@
 #include "fv-proto.h"
 #include "fv-error-message.h"
 #include "fv-mutex.h"
+#include "fv-speech.h"
 
-#define FV_RECORDER_RATE 48000
-#define FV_RECORDER_SAMPLES_PER_PACKET (FV_RECORDER_RATE *      \
+#define FV_RECORDER_SAMPLES_PER_PACKET (FV_SPEECH_SAMPLE_RATE * \
                                         FV_PROTO_SPEECH_TIME /  \
                                         1000)
 /* After receiving one second's worth of silence it will stop
@@ -361,7 +361,7 @@ fv_recorder_new(fv_recorder_callback callback,
                 goto error;
         }
 
-        recorder->encoder = opus_encoder_create(FV_RECORDER_RATE,
+        recorder->encoder = opus_encoder_create(FV_SPEECH_SAMPLE_RATE,
                                                 1, /* channels */
                                                 OPUS_APPLICATION_VOIP,
                                                 NULL /* error */);
