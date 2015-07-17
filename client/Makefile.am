@@ -98,7 +98,7 @@ finvenkisto_LDADD = \
 
 finvenkisto_html_SOURCES = \
 	$(sources) \
-	fv-audio-device-sdl.c \
+	fv-audio-device-emscripten.c \
 	fv-error-message-emscripten.c \
 	fv-network-emscripten.c \
 	fv-image-data-emscripten.c \

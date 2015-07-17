@@ -136,10 +136,6 @@ fv_microphone_new(fv_microphone_callback callback,
                                             navigator.mozGetUserMedia);
                         if (!getUserMedia)
                                 return 0;
-                        if (!window.AudioContext)
-                                return 0;
-
-                        Module.audioContext = new AudioContext();
 
                         if (!Module.audioContext.createScriptProcessor ||
                             !Module.audioContext.createMediaStreamSource)
@@ -190,11 +186,6 @@ fv_microphone_new(fv_microphone_callback callback,
 void
 fv_microphone_free(struct fv_microphone *mic)
 {
-        EM_ASM({
-                        Module.audioContext.close();
-                        Module.audioContext = undefined;
-                });
-
         fv_buffer_destroy(&mic->buffer);
 
         fv_free(mic);
