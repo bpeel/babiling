@@ -56,36 +56,23 @@ IMAGE_BLOCK_SIZE = 4
 #  x:          The colour is ignored.
 
 TOPS = {
-    'b95': 4, # brick flooring
+    'b95': 2, # brick flooring
     'c90': 0, # wall top
-    '452': 6, # grass
-    'eee': 2, # bathroom floor
-    '522': 19, # room floor
-    '933': 21, # wood
-    '54c': 31, # sleeping bag 1
-    '54d': 32 # sleeping bag 2
+    '452': 4, # grass
 }
 
 SIDES = {
-    '644': 8, # brick wall
-    '9cc': 11, # inner wall
-    'ddd': 14, # bathroom wall
-    'ccc': 16, # bathroom wall special
-    '911': 23, # table side
-    '56c': 25, # welcome poster 1
-    '56d': 28, # welcome poster 2
-    '001': 34, # chalkboard 1
-    '002': 37, # chalkboard 2
+    '644': 6, # brick wall
+    '9cc': 9, # inner wall
+    '56c': 12, # welcome poster 1
+    '56d': 14, # welcome poster 2
 }
 
 SPECIALS = {
     'd53': 0, # table
-    '259': 1, # toilet
-    '1df': 2, # teaset
-    '00e': 3, # chair
-    'd55': 4, # bed
-    'b3b': 5, # barrel
-    'baa': 6, # bar
+    '00e': 1, # chair
+    'b3b': 2, # barrel
+    'baa': 3, # bar
     '000': None # covered by a neighbouring special
 }
 

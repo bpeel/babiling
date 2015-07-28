@@ -25,10 +25,7 @@ SHADERS = \
 MODELS = \
 	person.ply \
 	table.ply \
-	toilet.ply \
-	teaset.ply \
 	chair.ply \
-	bed.ply \
 	barrel.ply \
 	bar.ply \
 	$(NULL)
@@ -37,23 +34,12 @@ MODELS = \
 # the map
 BLOCK_IMAGES = \
 	walltop.png \
-	bathroom-floor.png \
 	brick-flooring.png \
 	grass.png \
 	brick-wall.png \
 	inner-wall.png \
-	bathroom-wall.png \
-	bathroom-wall-note.png \
-	room-floor.png \
-	wood.png \
-	table-side.png \
 	welcome-poster1.png \
 	welcome-poster2.png \
-	sleeping-bag1.png \
-	sleeping-bag2.png \
-	chalkboard1.png \
-	chalkboard2.png \
-	paving.png \
 	$(NULL)
 
 map-texture.png : make-map-texture.py $(BLOCK_IMAGES)

@@ -45,10 +45,7 @@ struct fv_map_painter_model {
 static struct fv_map_painter_model
 fv_map_painter_models[] = {
         { "table.ply", 0 },
-        { "toilet.ply", 0 },
-        { "teaset.ply", 0 },
         { "chair.ply", 0 },
-        { "bed.ply", 0 },
         { "barrel.ply", 0 },
         { "bar.ply", FV_IMAGE_DATA_BAR_TEXTURE }
 };
