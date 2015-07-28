@@ -30,6 +30,7 @@ MODELS = \
 	chair.ply \
 	bed.ply \
 	barrel.ply \
+	bar.ply \
 	$(NULL)
 
 # The order here must match the order for the image numbers used in
@@ -70,6 +71,7 @@ IMAGES = \
 	pyjamas.png \
 	hud.png \
 	toiletguy.png \
+	bar-texture.png \
 	$(NULL)
 
 NON_IMAGES = \

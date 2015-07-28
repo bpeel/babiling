@@ -85,6 +85,7 @@ SPECIALS = {
     '00e': 3, # chair
     'd55': 4, # bed
     'b3b': 5, # barrel
+    'baa': 6, # bar
     '000': None # covered by a neighbouring special
 }
 

@@ -50,6 +50,7 @@ fv_map_painter_models[] = {
         { "chair.ply", 0 },
         { "bed.ply", 0 },
         { "barrel.ply", 0 },
+        { "bar.ply", FV_IMAGE_DATA_BAR_TEXTURE }
 };
 
 struct fv_map_painter_program {

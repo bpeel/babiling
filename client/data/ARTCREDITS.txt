@@ -16,6 +16,14 @@ from http://art.devsader.com/asset/texture/64x64Environment_RachelJMorris
 
 grass.png
 
+fnclimnx
+========
+
+https://uk.fiverr.com/fnclimnx/model-low-poly-3d-props-1a8b9944-e339-4e49-8836-d01d3a7296aa
+
+bar.blend
+bar-texture.png
+
 OpenGameArt.org
 ===============
 
