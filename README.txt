@@ -1,23 +1,9 @@
 Babiling
 ========
 
-Ludo por perforte malhelpi homojn krokodili por venigi la finan venkon!
+A virtual language exchange event.
 
-Ĉi tiu ludo estis farita por la LudFesto de nia-esperanto.com
-2014/2015.
-
-Vi rolas kiel finvenkisma esperantisto en esperanta evento kaj vi
-ĝeniĝas ĉar ĉiu parolas aliajn lingvojn anstataŭ esperanto! Por ripari
-la situacion necesas kuri al ĉiu kaj krii ‘NE KROKODILU!!’. Ĉiu kiu
-alkriiĝas iĝas verda kiel vera esperantisto. Se vi sukcese
-esperantigas ĉiun la fina venko venas kaj la ludo finiĝas.
-
-Ne eblas morti aŭ malsukcesi en la ludo sed vi povas konkursi por havi
-la plej rapidan tempon por venigi la finan venkon. Alternative vi
-povas inviti amikojn kaj ludi samtempe por vidi kiu povas esperantigi
-pli da homoj.
-
-Bonan ŝancon!
+Visit http://babiling.com/
 
 ===
 

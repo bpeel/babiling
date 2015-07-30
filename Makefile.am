@@ -11,5 +11,5 @@ SUBDIRS += \
 endif
 
 EXTRA_DIST = \
-	LEGUMIN.txt \
+	README.txt \
 	$(NULL)
