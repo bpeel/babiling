@@ -3,9 +3,9 @@ SUBDIRS = data rply
 bin_PROGRAMS =
 
 if IS_EMSCRIPTEN
-bin_PROGRAMS += finvenkisto.html
+bin_PROGRAMS += babiling.html
 else
-bin_PROGRAMS += finvenkisto
+bin_PROGRAMS += babiling
 endif
 
 AM_CFLAGS = \
@@ -83,7 +83,7 @@ ldadd = \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)
 
-finvenkisto_SOURCES = \
+babiling_SOURCES = \
 	$(sources) \
 	fv-audio-device-sdl.c \
 	fv-error-message-native.c \
@@ -91,12 +91,12 @@ finvenkisto_SOURCES = \
 	fv-image-data-native.c \
 	fv-microphone-pulse.c \
 	$(NULL)
-finvenkisto_LDADD = \
+babiling_LDADD = \
 	$(ldadd) \
 	$(PULSE_SIMPLE_LIBS) \
 	$(NULL)
 
-finvenkisto_html_SOURCES = \
+babiling_html_SOURCES = \
 	$(sources) \
 	fv-audio-device-emscripten.c \
 	fv-error-message-emscripten.c \
@@ -104,12 +104,12 @@ finvenkisto_html_SOURCES = \
 	fv-image-data-emscripten.c \
 	fv-microphone-emscripten.c \
 	$(NULL)
-finvenkisto_html_LDFLAGS = \
+babiling_html_LDFLAGS = \
 	--pre-js $(srcdir)/configure-emscripten.js \
-	--pre-js $(builddir)/data/finvenkisto-data.js \
-	--shell-file $(srcdir)/finvenkisto-shell.html \
+	--pre-js $(builddir)/data/babiling-data.js \
+	--shell-file $(srcdir)/babiling-shell.html \
 	$(NULL)
-finvenkisto_html_LDADD = \
+babiling_html_LDADD = \
 	$(ldadd) \
 	$(NULL)
 

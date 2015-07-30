@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2015 Neil Roberts
  *
@@ -89,7 +89,7 @@ fv_microphone_new(fv_microphone_callback callback,
         ss.rate = FV_SPEECH_SAMPLE_RATE;
 
         mic->pa = pa_simple_new(NULL, /* server */
-                                "Finvenkisto",
+                                "Babiling",
                                 PA_STREAM_RECORD,
                                 NULL, /* device */
                                 "VoIP input",

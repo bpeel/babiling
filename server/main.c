@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  * Copyright (C) 2013, 2015  Neil Roberts
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
@@ -109,8 +109,8 @@ free_addresses(struct address *list)
 static void
 usage(void)
 {
-        printf("Finvenkisto Server. Version " PACKAGE_VERSION "\n"
-               "usage: finvenkisto-server [options]...\n"
+        printf("Babiling Server. Version " PACKAGE_VERSION "\n"
+               "usage: babiling-server [options]...\n"
                " -h                    Show this help message\n"
                " -p <port>             Specifies a port to listen on.\n"
                "                       Equivalent to -a [::]:port.\n"
@@ -355,7 +355,7 @@ set_log_file(struct fv_error **error)
         if (option_log_file)
                 log_filename = option_log_file;
         else if (option_daemonize)
-                log_filename = "/var/log/finvenkisto.log";
+                log_filename = "/var/log/babiling.log";
         else
                 log_filename = "/dev/stdout";
 

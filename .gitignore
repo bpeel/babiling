@@ -21,7 +21,7 @@
 /stamp-h1
 /client/Makefile.in
 /client/Makefile
-/client/finvenkisto
+/client/babiling
 /client/fv-map.c
 /client/rply/Makefile
 /client/rply/Makefile.in
@@ -46,6 +46,6 @@
 /doc/Makefile.in
 /server/Makefile
 /server/Makefile.in
-/server/finvenkisto-server
+/server/babiling-server
 *.o
 .deps

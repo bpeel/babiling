@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2013, 2014, 2015 Neil Roberts
  *
@@ -1007,8 +1007,8 @@ check_gl_version(void)
 static void
 show_help(void)
 {
-        printf("Finvenkisto - Virtual Language Exchange\n"
-               "usage: finvenkisto [options]\n"
+        printf("Babiling - Virtual Language Exchange\n"
+               "usage: babiling [options]\n"
                "Options:\n"
                " -h        Show this help messae\n"
                " -w        Run in a window\n"
@@ -1331,7 +1331,7 @@ main(int argc, char **argv)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
 
         for (i = 0; ; i++) {
-                data.window = SDL_CreateWindow("Finvenkisto",
+                data.window = SDL_CreateWindow("Babiling",
                                                SDL_WINDOWPOS_UNDEFINED,
                                                SDL_WINDOWPOS_UNDEFINED,
                                                800, 600,

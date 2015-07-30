@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
 
-AC_INIT(finvenkisto, [0.1])
+AC_INIT(babiling, [0.1])
 AC_CONFIG_SRCDIR(client/fv-main.c)
 AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_MACRO_DIR([build/autotools])

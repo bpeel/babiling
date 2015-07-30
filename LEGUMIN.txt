@@ -1,5 +1,5 @@
-Finvenkisto
-===========
+Babiling
+========
 
 Ludo por perforte malhelpi homojn krokodili por venigi la finan venkon!
 
@@ -21,7 +21,7 @@ Bonan ŝancon!
 
 ===
 
-Finvenkisto is copyright 2013, 2014, 2015 Neil Roberts
+Babiling is copyright 2013, 2014, 2015 Neil Roberts
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ==
 
-Finvenkisto contains code from rply with the following copyright notice:
+Babiling contains code from rply with the following copyright notice:
 
 RPly 1.01 license
 Copyright © 2003-2005 Diego Nehab.
@@ -63,7 +63,7 @@ DEALINGS IN THE SOFTWARE.
 
 ==
 
-Finvenkisto contains from Mesa and Cogl with the following copyright
+Babiling contains from Mesa and Cogl with the following copyright
 notices:
 
 Copyright (C) 2009,2010,2011 Intel Corporation.

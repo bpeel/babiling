@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2015 Neil Roberts
  *
@@ -124,7 +124,7 @@ struct fv_network {
  */
 static const uint8_t
 websocket_header[] =
-        "GET /finvenkisto HTTP/1.1\r\n"
+        "GET /babiling HTTP/1.1\r\n"
         "Host: stub.com\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"

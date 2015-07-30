@@ -20,7 +20,7 @@ SRC_DIR=`cd "$SRC_BUILD_DIR"/.. && pwd`
 DOWNLOADS_DIR="$SRC_DIR/downloads"
 DEPS_DIR="$SRC_DIR/deps"
 INSTALL_DIR="$SRC_DIR/install"
-RESULT_FILE="$SRC_DIR/finvenkisto.zip"
+RESULT_FILE="$SRC_DIR/babiling.zip"
 RESULT_DIR="$SRC_DIR/result"
 
 function find_compiler ()
@@ -134,8 +134,8 @@ cd "$SRC_DIR"
 make -j4
 make install
 
-cp "$INSTALL_DIR/bin/"{finvenkisto.exe,SDL2.dll} "$RESULT_DIR"
-cp -R "$INSTALL_DIR/share/finvenkisto" "$RESULT_DIR/data"
+cp "$INSTALL_DIR/bin/"{babiling.exe,SDL2.dll} "$RESULT_DIR"
+cp -R "$INSTALL_DIR/share/babiling" "$RESULT_DIR/data"
 cp "$SRC_DIR/LEGUMIN.txt" "$RESULT_DIR"
 cp "$SRC_DIR/COPYING" "$RESULT_DIR/COPYING.txt"
 

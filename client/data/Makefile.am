@@ -66,7 +66,7 @@ NON_IMAGES = \
 	$(MODELS) \
 	$(NULL)
 
-imagesdir = $(datadir)/finvenkisto
+imagesdir = $(datadir)/babiling
 dist_images_DATA = \
 	$(IMAGES) \
 	$(NON_IMAGES) \
@@ -125,11 +125,11 @@ DISTCLEANFILES = \
 EXTRA_TARGETS = fv-image-data-stamp
 
 if IS_EMSCRIPTEN
-EXTRA_TARGETS += finvenkisto-data.js
+EXTRA_TARGETS += babiling-data.js
 
-finvenkisto-data.js : $(dist_images_DATA)
+babiling-data.js : $(dist_images_DATA)
 	$(AM_V_GEN)python $$EMSCRIPTEN/tools/file_packager.py \
-	finvenkisto.data --js-output=$@ --preload $^
+	babiling.data --js-output=$@ --preload $^
 endif
 
 all-local : $(EXTRA_TARGETS)

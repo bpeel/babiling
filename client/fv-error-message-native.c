@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2015 Neil Roberts
  *
@@ -48,7 +48,7 @@ fv_error_message(const char *format, ...)
                 fv_buffer_init(&buffer);
                 fv_buffer_append_vprintf(&buffer, format, ap);
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-                                         "Finvenkisto - eraro",
+                                         "Babiling - eraro",
                                          (char *) buffer.data,
                                          NULL);
                 fv_buffer_destroy(&buffer);

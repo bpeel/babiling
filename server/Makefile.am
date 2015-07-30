@@ -1,5 +1,5 @@
 bin_PROGRAMS = \
-	finvenkisto-server \
+	babiling-server \
 	$(NULL)
 
 AM_CFLAGS = \
@@ -9,7 +9,7 @@ AM_CFLAGS = \
 	-I$(srcdir)/../common \
 	$(NULL)
 
-finvenkisto_server_SOURCES = \
+babiling_server_SOURCES = \
 	fv-base64.c \
 	fv-base64.h \
 	fv-connection.c \
@@ -44,11 +44,11 @@ finvenkisto_server_SOURCES = \
 	sha1.h \
 	$(NULL)
 
-finvenkisto_server_LDFLAGS = \
+babiling_server_LDFLAGS = \
 	-pthread \
 	$(NULL)
 
-finvenkisto_server_LDADD = \
+babiling_server_LDADD = \
 	$(FINVENKISTO_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
 	$(OPUS_LIBS) \

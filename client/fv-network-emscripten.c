@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2015 Neil Roberts
  *
@@ -267,7 +267,7 @@ fv_network_connect_timeout_cb(struct fv_network *nw)
                                 Module.fv_socket =
                                         new WebSocket("ws://" + hostname +
                                                       ":" + $0 +
-                                                      "/finvenkisto");
+                                                      "/babiling");
                                 connect_res = true;
                         } catch (e) {
                         }

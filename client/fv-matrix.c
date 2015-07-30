@@ -1,5 +1,5 @@
 /*
- * Finvenkisto
+ * Babiling
  *
  * Copyright (C) 2014  Neil Roberts
  * Copyright (C) 2009,2010,2011 Intel Corporation.
@@ -50,7 +50,7 @@
  */
 
 /* This code was taken from Cogl which in turn based it on code from
- * Mesa. The changes for Finvenkisto are just to change the
+ * Mesa. The changes for Babiling are just to change the
  * namespace and remove references to quaternions and eulers. */
 
 /*
