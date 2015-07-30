@@ -48,7 +48,7 @@ fv_error_message(const char *format, ...)
                 fv_buffer_init(&buffer);
                 fv_buffer_append_vprintf(&buffer, format, ap);
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-                                         "Babiling - eraro",
+                                         "Babiling - error",
                                          (char *) buffer.data,
                                          NULL);
                 fv_buffer_destroy(&buffer);
