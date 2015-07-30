@@ -96,6 +96,7 @@ struct tile_data {
         struct fv_buffer indices;
         struct fv_buffer vertices;
         int texture_width, texture_height;
+        int image_width, image_height;
 };
 
 static float
@@ -203,7 +204,7 @@ set_tex_coords_for_image(struct fv_map_painter *painter,
                          int image,
                          int height)
 {
-        int blocks_h = (data->texture_height /
+        int blocks_h = (data->image_height /
                         FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE);
         int is1 = image / blocks_h * FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE * 2;
         int it1 = image % blocks_h * FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE;
@@ -463,11 +464,14 @@ fv_map_painter_new(struct fv_image_data *image_data,
 
         fv_image_data_get_size(image_data,
                                FV_IMAGE_DATA_MAP_TEXTURE,
-                               &data.texture_width, &data.texture_height);
+                               &data.image_width, &data.image_height);
 
-        if (!fv_gl.have_npot_mipmaps) {
-                data.texture_width = smallest_pot(data.texture_width);
-                data.texture_height = smallest_pot(data.texture_height);
+        if (fv_gl.have_npot_mipmaps) {
+                data.texture_width = data.image_width;
+                data.texture_height = data.image_height;
+        } else {
+                data.texture_width = smallest_pot(data.image_width);
+                data.texture_height = smallest_pot(data.image_height);
         }
 
         fv_gl.glGenTextures(1, &painter->texture);
