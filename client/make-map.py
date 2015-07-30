@@ -135,6 +135,7 @@ if image.size != (MAP_WIDTH * IMAGE_BLOCK_SIZE, MAP_HEIGHT * IMAGE_BLOCK_SIZE):
 
 print('''
 /* Automatically generated from make-map.py, do not edit */
+#include "config.h"
 #include "fv-map.h"
 #define F FV_MAP_FULL_WALL
 #define H FV_MAP_HALF_WALL
