@@ -85,7 +85,6 @@ struct fv_map_painter {
         struct fv_map_painter_special specials[FV_MAP_PAINTER_N_MODELS];
 
         GLuint texture;
-        int texture_width, texture_height;
 };
 
 struct vertex {
@@ -96,6 +95,7 @@ struct vertex {
 struct tile_data {
         struct fv_buffer indices;
         struct fv_buffer vertices;
+        int texture_width, texture_height;
 };
 
 static float
@@ -198,20 +198,21 @@ add_vertical_side(struct tile_data *data,
 
 static void
 set_tex_coords_for_image(struct fv_map_painter *painter,
+                         struct tile_data *data,
                          struct vertex v[4],
                          int image,
                          int height)
 {
-        int blocks_h = (painter->texture_height /
+        int blocks_h = (data->texture_height /
                         FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE);
         int is1 = image / blocks_h * FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE * 2;
         int it1 = image % blocks_h * FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE;
-        uint16_t s1 = is1 * (UINT16_MAX - 1) / painter->texture_width;
-        uint16_t t1 = it1 * (UINT16_MAX - 1) / painter->texture_height;
+        uint16_t s1 = is1 * (UINT16_MAX - 1) / data->texture_width;
+        uint16_t t1 = it1 * (UINT16_MAX - 1) / data->texture_height;
         uint16_t s2 = ((is1 + FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE) *
-                       (UINT16_MAX - 1) / painter->texture_width);
+                       (UINT16_MAX - 1) / data->texture_width);
         uint16_t t2 = ((it1 + FV_MAP_PAINTER_TEXTURE_BLOCK_SIZE * height) *
-                       (UINT16_MAX - 1) / painter->texture_height);
+                       (UINT16_MAX - 1) / data->texture_height);
 
         v[0].s = s1;
         v[0].t = t2;
@@ -237,7 +238,9 @@ generate_square(struct fv_map_painter *painter,
 
         z = get_block_height(block);
 
-        set_tex_coords_for_image(painter, v,
+        set_tex_coords_for_image(painter,
+                                 data,
+                                 v,
                                  FV_MAP_GET_BLOCK_TOP_IMAGE(block),
                                  1.0f);
 
@@ -259,25 +262,33 @@ generate_square(struct fv_map_painter *painter,
         /* Add the side walls */
         if (z > (oz = get_position_height(x, y + 1))) {
                 v = add_horizontal_side(data, y + 1, x + 1, oz, x, z);
-                set_tex_coords_for_image(painter, v,
+                set_tex_coords_for_image(painter,
+                                         data,
+                                         v,
                                          FV_MAP_GET_BLOCK_NORTH_IMAGE(block),
                                          z - oz);
         }
         if (z > (oz = get_position_height(x, y - 1))) {
                 v = add_horizontal_side(data, y, x, oz, x + 1, z);
-                set_tex_coords_for_image(painter, v,
+                set_tex_coords_for_image(painter,
+                                         data,
+                                         v,
                                          FV_MAP_GET_BLOCK_SOUTH_IMAGE(block),
                                          z - oz);
         }
         if (z > (oz = get_position_height(x - 1, y))) {
                 v = add_vertical_side(data, x, y + 1, oz, y, z);
-                set_tex_coords_for_image(painter, v,
+                set_tex_coords_for_image(painter,
+                                         data,
+                                         v,
                                          FV_MAP_GET_BLOCK_WEST_IMAGE(block),
                                          z - oz);
         }
         if (z > (oz = get_position_height(x + 1, y))) {
                 v = add_vertical_side(data, x + 1, y, oz, y + 1, z);
-                set_tex_coords_for_image(painter, v,
+                set_tex_coords_for_image(painter,
+                                         data,
+                                         v,
                                          FV_MAP_GET_BLOCK_EAST_IMAGE(block),
                                          z - oz);
         }
@@ -432,7 +443,6 @@ fv_map_painter_new(struct fv_image_data *image_data,
         struct tile_data data;
         struct fv_map_painter_tile *tile;
         int first, tx, ty;
-        int tex_width, tex_height;
         GLuint tex_uniform;
 
         painter = fv_alloc(sizeof *painter);
@@ -453,14 +463,11 @@ fv_map_painter_new(struct fv_image_data *image_data,
 
         fv_image_data_get_size(image_data,
                                FV_IMAGE_DATA_MAP_TEXTURE,
-                               &tex_width, &tex_height);
+                               &data.texture_width, &data.texture_height);
 
         if (!fv_gl.have_npot_mipmaps) {
-                painter->texture_width = smallest_pot(tex_width);
-                painter->texture_height = smallest_pot(tex_height);
-        } else {
-                painter->texture_width = tex_width;
-                painter->texture_height = tex_height;
+                data.texture_width = smallest_pot(data.texture_width);
+                data.texture_height = smallest_pot(data.texture_height);
         }
 
         fv_gl.glGenTextures(1, &painter->texture);
@@ -468,7 +475,7 @@ fv_map_painter_new(struct fv_image_data *image_data,
         fv_gl.glTexImage2D(GL_TEXTURE_2D,
                            0, /* level */
                            GL_RGB,
-                           painter->texture_width, painter->texture_height,
+                           data.texture_width, data.texture_height,
                            0, /* border */
                            GL_RGB,
                            GL_UNSIGNED_BYTE,
