@@ -3,10 +3,8 @@ Rachel J Morris
 
 from http://art.devsader.com/asset/texture/64x64InsideTiles_RachelJMorris
 
-bathroom-floor.png
 brick-flooring.png
 inner-wall.png
-paving.png
 
 from http://art.devsader.com/asset/texture/64x64MessyBricks_RachelJMorris
 
@@ -24,12 +22,6 @@ https://uk.fiverr.com/fnclimnx/model-low-poly-3d-props-1a8b9944-e339-4e49-8836-d
 bar.blend
 bar-texture.png
 
-OpenGameArt.org
-===============
-
-wood.png
-JCW - http://opengameart.org/content/wood-texture-tiles
-
 Neil Roberts
 ============
 
@@ -37,15 +29,7 @@ person.blend
 finvenkisto.png
 walltop.png
 table.blend
-toilet.blend
-bathroom-wall.png
-bathroom-wall-note.png
 chair.blend
-table-side.png
-room-floor.png
-
-teaset.blend
-(contains the Utah Teapot from here: http://www.holmes3d.net/graphics/teapot/)
 
 bambo1.png
 (contains CC0 tie-dye image from
@@ -55,18 +39,11 @@ bambo2.png
 bambo3.png
 
 gufujestro.png
-sleeping-bag1.png
-sleeping-bag2.png
 
 toiletguy.png
 (contains CC-0 lil-chick from here
  http://opengameart.org/content/lil-chick)
 
 pyjamas.png
-
-bed.blend
-
-chalkboard1.png
-chalkboard2.png
 
 barrel.ply
