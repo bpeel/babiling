@@ -129,6 +129,12 @@ fv_microphone_new(fv_microphone_callback callback,
                                 node.onaudioprocess = onProcess;
                                 source.connect(node);
                                 node.connect(ac.destination);
+
+                                /* We need to keep a reference to the
+                                 * source or Firefox will garbage
+                                 * collect it. See Mozilla bug 934512.
+                                 */
+                                Module.mediaStreamSource = source;
                         }
 
                         var getUserMedia = (navigator.getUserMedia ||
