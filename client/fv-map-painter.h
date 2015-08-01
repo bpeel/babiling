@@ -24,9 +24,11 @@
 #include "fv-shader-data.h"
 #include "fv-logic.h"
 #include "fv-paint-state.h"
+#include "fv-map.h"
 
 struct fv_map_painter *
-fv_map_painter_new(struct fv_image_data *image_data,
+fv_map_painter_new(const struct fv_map *map,
+                   struct fv_image_data *image_data,
                    struct fv_shader_data *shader_data);
 
 void

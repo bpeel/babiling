@@ -85,6 +85,8 @@ struct fv_map_painter {
         struct fv_map_painter_special specials[FV_MAP_PAINTER_N_MODELS];
 
         GLuint texture;
+
+        const struct fv_map *map;
 };
 
 struct vertex {
@@ -113,13 +115,14 @@ get_block_height(fv_map_block_t block)
 }
 
 static float
-get_position_height(int x, int y)
+get_position_height(struct fv_map_painter *painter,
+                    int x, int y)
 {
         if (x < 0 || x >= FV_MAP_WIDTH ||
             y < 0 || y >= FV_MAP_HEIGHT)
                 return 0.0f;
 
-        return get_block_height(fv_map.blocks[y * FV_MAP_WIDTH + x]);
+        return get_block_height(painter->map->blocks[y * FV_MAP_WIDTH + x]);
 }
 
 static struct vertex *
@@ -230,7 +233,7 @@ generate_square(struct fv_map_painter *painter,
                 struct tile_data *data,
                 int x, int y)
 {
-        fv_map_block_t block = fv_map.blocks[y * FV_MAP_WIDTH + x];
+        fv_map_block_t block = painter->map->blocks[y * FV_MAP_WIDTH + x];
         struct vertex *v;
         int i;
         int z, oz;
@@ -261,7 +264,7 @@ generate_square(struct fv_map_painter *painter,
         v->y = y + 1;
 
         /* Add the side walls */
-        if (z > (oz = get_position_height(x, y + 1))) {
+        if (z > (oz = get_position_height(painter, x, y + 1))) {
                 v = add_horizontal_side(data, y + 1, x + 1, oz, x, z);
                 set_tex_coords_for_image(painter,
                                          data,
@@ -269,7 +272,7 @@ generate_square(struct fv_map_painter *painter,
                                          FV_MAP_GET_BLOCK_NORTH_IMAGE(block),
                                          z - oz);
         }
-        if (z > (oz = get_position_height(x, y - 1))) {
+        if (z > (oz = get_position_height(painter, x, y - 1))) {
                 v = add_horizontal_side(data, y, x, oz, x + 1, z);
                 set_tex_coords_for_image(painter,
                                          data,
@@ -277,7 +280,7 @@ generate_square(struct fv_map_painter *painter,
                                          FV_MAP_GET_BLOCK_SOUTH_IMAGE(block),
                                          z - oz);
         }
-        if (z > (oz = get_position_height(x - 1, y))) {
+        if (z > (oz = get_position_height(painter, x - 1, y))) {
                 v = add_vertical_side(data, x, y + 1, oz, y, z);
                 set_tex_coords_for_image(painter,
                                          data,
@@ -285,7 +288,7 @@ generate_square(struct fv_map_painter *painter,
                                          FV_MAP_GET_BLOCK_WEST_IMAGE(block),
                                          z - oz);
         }
-        if (z > (oz = get_position_height(x + 1, y))) {
+        if (z > (oz = get_position_height(painter, x + 1, y))) {
                 v = add_vertical_side(data, x + 1, y, oz, y + 1, z);
                 set_tex_coords_for_image(painter,
                                          data,
@@ -437,7 +440,8 @@ init_programs(struct fv_map_painter *painter,
 }
 
 struct fv_map_painter *
-fv_map_painter_new(struct fv_image_data *image_data,
+fv_map_painter_new(const struct fv_map *map,
+                   struct fv_image_data *image_data,
                    struct fv_shader_data *shader_data)
 {
         struct fv_map_painter *painter;
@@ -447,6 +451,8 @@ fv_map_painter_new(struct fv_image_data *image_data,
         GLuint tex_uniform;
 
         painter = fv_alloc(sizeof *painter);
+
+        painter->map = map;
 
         if (fv_gl.have_instanced_arrays) {
                 fv_gl.glGenBuffers(1, &painter->instance_buffer);
@@ -722,7 +728,7 @@ fv_map_painter_paint(struct fv_map_painter *painter,
 
         for (y = y_min; y < y_max; y++) {
                 for (x = x_max - 1; x >= x_min; x--) {
-                        map_tile = fv_map.tiles + y * FV_MAP_TILES_X + x;
+                        map_tile = painter->map->tiles + y * FV_MAP_TILES_X + x;
                         for (i = 0; i < map_tile->n_specials; i++) {
                                 paint_special(painter,
                                               map_tile->specials + i,

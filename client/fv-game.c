@@ -73,7 +73,9 @@ fv_game_new(struct fv_image_data *image_data,
         fv_matrix_scale(&game->base_transform,
                         FV_GAME_SCALE, FV_GAME_SCALE, FV_GAME_SCALE);
 
-        game->map_painter = fv_map_painter_new(image_data, shader_data);
+        game->map_painter = fv_map_painter_new(&fv_map,
+                                               image_data,
+                                               shader_data);
         if (game->map_painter == NULL)
                 goto error;
 
