@@ -23,7 +23,6 @@
 #include <stdint.h>
 
 enum fv_person_type {
-        FV_PERSON_TYPE_FINVENKISTO,
         FV_PERSON_TYPE_BAMBISTO1,
         FV_PERSON_TYPE_BAMBISTO2,
         FV_PERSON_TYPE_BAMBISTO3,
@@ -32,7 +31,7 @@ enum fv_person_type {
         FV_PERSON_TYPE_PYJAMAS,
 };
 
-#define FV_PERSON_N_TYPES 7
+#define FV_PERSON_N_TYPES 6
 
 struct fv_person_position {
         uint32_t x, y;

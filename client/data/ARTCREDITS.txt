@@ -26,7 +26,6 @@ Neil Roberts
 ============
 
 person.blend
-finvenkisto.png
 walltop.png
 table.blend
 chair.blend

@@ -37,7 +37,6 @@
  * the order of the enum in fv_person_type */
 enum fv_image_data_image
 textures[] = {
-        FV_IMAGE_DATA_FINVENKISTO,
         FV_IMAGE_DATA_BAMBO1,
         FV_IMAGE_DATA_BAMBO2,
         FV_IMAGE_DATA_BAMBO3,
