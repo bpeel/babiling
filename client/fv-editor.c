@@ -41,9 +41,10 @@
 
 /* 40° vertical FOV angle when the height of the display is 2.0 */
 #define FV_EDITOR_NEAR_PLANE 2.7474774194546225f
-#define FV_EDITOR_FAR_PLANE 15.0f
+#define FV_EDITOR_FAR_PLANE 40.0f
 
-#define FV_EDITOR_ORIGIN_DISTANCE 10.0f
+#define FV_EDITOR_MIN_DISTANCE 10
+#define FV_EDITOR_MAX_DISTANCE 30
 #define FV_EDITOR_SCALE 0.7f
 
 struct data {
@@ -63,6 +64,7 @@ struct data {
 
         int x_pos;
         int y_pos;
+        int distance;
 
         struct fv_map_painter *map_painter;
 
@@ -99,6 +101,20 @@ update_position(struct data *data,
 }
 
 static void
+update_distance(struct data *data,
+                int offset)
+{
+        data->distance += offset;
+
+        if (data->distance > FV_EDITOR_MAX_DISTANCE)
+                data->distance = FV_EDITOR_MAX_DISTANCE;
+        else if (data->distance < FV_EDITOR_MIN_DISTANCE)
+                data->distance = FV_EDITOR_MIN_DISTANCE;
+
+        queue_redraw(data);
+}
+
+static void
 handle_key_down(struct data *data,
                  const SDL_KeyboardEvent *event)
 {
@@ -121,6 +137,14 @@ handle_key_down(struct data *data,
 
         case SDLK_UP:
                 update_position(data, 0, 1);
+                break;
+
+        case SDLK_a:
+                update_distance(data, -1);
+                break;
+
+        case SDLK_z:
+                update_distance(data, 1);
                 break;
         }
 }
@@ -273,7 +297,7 @@ paint(struct data *data)
         fv_matrix_init_identity(&transform->modelview);
 
         fv_matrix_translate(&transform->modelview,
-                            0.0f, 0.0f, -FV_EDITOR_ORIGIN_DISTANCE);
+                            0.0f, 0.0f, -data->distance);
 
         fv_matrix_rotate(&transform->modelview,
                          -30.0f,
@@ -395,6 +419,7 @@ main(int argc, char **argv)
         data.map = fv_map;
         data.x_pos = FV_MAP_WIDTH / 2;
         data.y_pos = FV_MAP_HEIGHT / 2;
+        data.distance = FV_EDITOR_MIN_DISTANCE;
 
         res = SDL_Init(SDL_INIT_VIDEO);
         if (res < 0) {
