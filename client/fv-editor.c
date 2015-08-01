@@ -278,9 +278,6 @@ handle_image_data_event(struct data *data,
                 data->quit = true;
                 break;
         }
-
-        fv_image_data_free(data->image_data);
-        data->image_data = NULL;
 }
 
 static void
