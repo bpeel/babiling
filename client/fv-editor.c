@@ -113,6 +113,36 @@ queue_redraw(struct data *data)
 }
 
 static void
+destroy_map_painter(struct data *data)
+{
+        if (data->graphics.map_painter) {
+                fv_map_painter_free(data->graphics.map_painter);
+                data->graphics.map_painter = NULL;
+        }
+}
+
+static bool
+create_map_painter(struct data *data)
+{
+        data->map_painter = fv_map_painter_new(&data->map,
+                                               data->image_data,
+                                               &data->graphics.shader_data);
+
+        return data->map_painter != NULL;
+}
+
+static void
+redraw_map(struct data *data)
+{
+        if (data->image_data == NULL)
+                return;
+
+        destroy_map_painter(data);
+        create_map_painter(data);
+        queue_redraw(data);
+}
+
+static void
 update_position(struct data *data,
                 int x_offset,
                 int y_offset)
@@ -169,6 +199,34 @@ update_distance(struct data *data,
 }
 
 static void
+toggle_height(struct data *data)
+{
+        fv_map_block_t *block = (data->map.blocks +
+                                 data->x_pos +
+                                 data->y_pos * FV_MAP_WIDTH);
+        int new_type;
+
+        switch (FV_MAP_GET_BLOCK_TYPE(*block)) {
+        case FV_MAP_BLOCK_TYPE_FLOOR:
+                new_type = FV_MAP_BLOCK_TYPE_HALF_WALL;
+                break;
+        case FV_MAP_BLOCK_TYPE_HALF_WALL:
+                new_type = FV_MAP_BLOCK_TYPE_FULL_WALL;
+                break;
+        case FV_MAP_BLOCK_TYPE_FULL_WALL:
+                new_type = FV_MAP_BLOCK_TYPE_FLOOR;
+                break;
+        default:
+                /* Don't modify special blocks */
+                return;
+        }
+
+        *block = (*block & ~FV_MAP_BLOCK_TYPE_MASK) | new_type;
+
+        redraw_map(data);
+}
+
+static void
 handle_key_down(struct data *data,
                  const SDL_KeyboardEvent *event)
 {
@@ -205,26 +263,11 @@ handle_key_down(struct data *data,
                 data->rotation = (data->rotation + 1) % 4;
                 queue_redraw(data);
                 break;
+
+        case SDLK_h:
+                toggle_height(data);
+                break;
         }
-}
-
-static void
-destroy_map_painter(struct data *data)
-{
-        if (data->graphics.map_painter) {
-                fv_map_painter_free(data->graphics.map_painter);
-                data->graphics.map_painter = NULL;
-        }
-}
-
-static bool
-create_map_painter(struct data *data)
-{
-        data->map_painter = fv_map_painter_new(&data->map,
-                                               data->image_data,
-                                               &data->graphics.shader_data);
-
-        return data->map_painter != NULL;
 }
 
 static void
