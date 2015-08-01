@@ -28,6 +28,7 @@
 #include "fv-util.h"
 #include "fv-map.h"
 #include "fv-buffer.h"
+#include "fv-random.h"
 
 /* Turn speed of a person in radians per second */
 #define FV_LOGIC_TURN_SPEED (2.5f * M_PI)
@@ -51,11 +52,13 @@ struct fv_logic_position {
 
 struct fv_logic_player {
         struct fv_logic_position position;
+        enum fv_person_type type;
         float center_x, center_y;
 };
 
 struct fv_logic_npc {
         struct fv_logic_position position;
+        enum fv_person_type type;
 };
 
 struct fv_logic {
@@ -81,6 +84,7 @@ fv_logic_new(void)
         player->position.current_direction = -M_PI / 2.0f;
         player->position.target_direction = 0.0f;
         player->position.speed = 0.0f;
+        player->type = fv_random_range(0, FV_PERSON_N_TYPES);
 
         player->center_x = player->position.x;
         player->center_y = player->position.y;
@@ -241,7 +245,7 @@ update_position(struct fv_logic *logic,
                 update_position_direction(logic, position, progress_secs);
 
         if (position_changed || direction_changed)
-                state_change |= FV_LOGIC_STATE_CHANGE_PLAYER;
+                state_change |= FV_LOGIC_STATE_CHANGE_POSITION;
 
         return state_change;
 }
@@ -343,14 +347,16 @@ fv_logic_update_npc(struct fv_logic *logic,
         npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
         pos = &npc->position;
 
-        pos->x = person->x_position / (float) UINT32_MAX * FV_MAP_WIDTH;
-        pos->y = person->y_position / (float) UINT32_MAX * FV_MAP_HEIGHT;
-        pos->current_direction = (person->direction / (float) UINT16_MAX *
+        pos->x = person->pos.x / (float) UINT32_MAX * FV_MAP_WIDTH;
+        pos->y = person->pos.y / (float) UINT32_MAX * FV_MAP_HEIGHT;
+        pos->current_direction = (person->pos.direction / (float) UINT16_MAX *
                                   2 * M_PI);
         if (pos->current_direction > M_PI)
                 pos->current_direction -= 2 * M_PI;
         pos->target_direction = pos->current_direction;
         pos->speed = 0.0f;
+
+        npc->type = MIN(person->appearance.image, FV_PERSON_N_TYPES - 1);
 }
 
 void
@@ -368,12 +374,13 @@ fv_logic_get_player(struct fv_logic *logic,
                 &logic->player.position;
         float direction;
 
-        person->x_position = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
-        person->y_position = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
+        person->pos.x = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
+        person->pos.y = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
         direction = pos->current_direction;
         if (direction < 0)
                 direction += 2 * M_PI;
-        person->direction = direction / (2 * M_PI) * UINT16_MAX;
+        person->pos.direction = direction / (2 * M_PI) * UINT16_MAX;
+        person->appearance.image = logic->player.type;
 }
 
 void
@@ -402,17 +409,14 @@ fv_logic_for_each_person(struct fv_logic *logic,
         struct fv_logic_person person;
         int i;
 
-        person.type = FV_PERSON_TYPE_FINVENKISTO;
-
         player = &logic->player;
 
         person.x = player->position.x;
         person.y = player->position.y;
         person.direction = player->position.current_direction;
+        person.type = player->type;
 
         person_cb(&person, user_data);
-
-        person.type = FV_PERSON_TYPE_PYJAMAS;
 
         for (i = 0;
              i < logic->npcs.length / sizeof (struct fv_logic_npc);
@@ -422,6 +426,7 @@ fv_logic_for_each_person(struct fv_logic *logic,
                 person.x = npc->position.x;
                 person.y = npc->position.y;
                 person.direction = npc->position.current_direction;
+                person.type = npc->type;
 
                 person_cb(&person, user_data);
         }

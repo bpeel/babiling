@@ -71,7 +71,8 @@ struct fv_network {
 
         bool quit;
 
-        bool player_queued;
+        bool position_queued;
+        bool appearance_queued;
         struct fv_person queued_player;
 
         /* List of fv_network_hosts. This can be added to while the
@@ -573,10 +574,17 @@ thread_func(void *user_data)
 
                 quit = nw->quit;
 
-                if (nw->player_queued) {
-                        nw->base.player_dirty = true;
-                        nw->player_queued = false;
-                        nw->base.player = nw->queued_player;
+                if (nw->position_queued) {
+                        nw->base.position_dirty = true;
+                        nw->position_queued = false;
+                        nw->base.player.pos = nw->queued_player.pos;
+                }
+
+                if (nw->appearance_queued) {
+                        nw->base.appearance_dirty = true;
+                        nw->appearance_queued = false;
+                        nw->base.player.appearance =
+                                nw->queued_player.appearance;
                 }
 
                 if (!fv_list_empty(&nw->queued_hosts)) {
@@ -706,7 +714,8 @@ fv_network_new(struct fv_audio_buffer *audio_buffer,
         nw->sock = -1;
         nw->quit = false;
         nw->next_host = NULL;
-        nw->player_queued = false;
+        nw->position_queued = false;
+        nw->appearance_queued = false;
 
         nw->last_connect_time = 0;
         nw->connect_wait_time = FV_NETWORK_MIN_CONNECT_WAIT_TIME;
@@ -755,12 +764,23 @@ error_base:
 }
 
 void
-fv_network_update_player(struct fv_network *nw,
-                         const struct fv_person *player)
+fv_network_update_position(struct fv_network *nw,
+                           const struct fv_person_position *position)
 {
         fv_mutex_lock(nw->mutex);
-        nw->queued_player = *player;
-        nw->player_queued = true;
+        nw->queued_player.pos = *position;
+        nw->position_queued = true;
+        fv_network_wakeup_thread(nw);
+        fv_mutex_unlock(nw->mutex);
+}
+
+void
+fv_network_update_appearance(struct fv_network *nw,
+                             const struct fv_person_appearance *appearance)
+{
+        fv_mutex_lock(nw->mutex);
+        nw->queued_player.appearance = *appearance;
+        nw->appearance_queued = true;
         fv_network_wakeup_thread(nw);
         fv_mutex_unlock(nw->mutex);
 }

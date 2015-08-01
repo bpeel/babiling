@@ -463,11 +463,21 @@ fv_network_new(struct fv_audio_buffer *audio_buffer,
 }
 
 void
-fv_network_update_player(struct fv_network *nw,
-                         const struct fv_person *player)
+fv_network_update_position(struct fv_network *nw,
+                           const struct fv_person_position *position)
 {
-        nw->base.player_dirty = true;
-        nw->base.player = *player;
+        nw->base.position_dirty = true;
+        nw->base.player.pos = *position;
+
+        update_write_timeout(nw);
+}
+
+void
+fv_network_update_appearance(struct fv_network *nw,
+                             const struct fv_person_appearance *appearance)
+{
+        nw->base.appearance_dirty = true;
+        nw->base.player.appearance = *appearance;
 
         update_write_timeout(nw);
 }

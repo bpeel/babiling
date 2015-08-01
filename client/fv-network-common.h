@@ -27,7 +27,8 @@ struct fv_network_base {
         bool has_player_id;
         uint64_t player_id;
 
-        bool player_dirty;
+        bool position_dirty;
+        bool appearance_dirty;
         struct fv_person player;
 
         /* Array of fv_persons */
@@ -83,7 +84,10 @@ needs_write_poll_base(struct fv_network *nw)
         if (!base->sent_hello)
                 return true;
 
-        if (base->player_dirty)
+        if (base->appearance_dirty)
+                return true;
+
+        if (base->position_dirty)
                 return true;
 
         if (fv_recorder_has_packet(base->recorder))
@@ -135,7 +139,7 @@ write_reconnect(struct fv_network *nw)
 }
 
 static bool
-write_player(struct fv_network *nw)
+write_position(struct fv_network *nw)
 {
         struct fv_network_base *base = fv_network_get_base(nw);
         int res;
@@ -144,18 +148,40 @@ write_player(struct fv_network *nw)
                             FV_PROTO_UPDATE_POSITION,
 
                             FV_PROTO_TYPE_UINT32,
-                            base->player.x_position,
+                            base->player.pos.x,
 
                             FV_PROTO_TYPE_UINT32,
-                            base->player.y_position,
+                            base->player.pos.y,
 
                             FV_PROTO_TYPE_UINT16,
-                            base->player.direction,
+                            base->player.pos.direction,
 
                             FV_PROTO_TYPE_NONE);
 
         if (res != -1) {
-                base->player_dirty = false;
+                base->position_dirty = false;
+                return true;
+        } else {
+                return false;
+        }
+}
+
+static bool
+write_appearance(struct fv_network *nw)
+{
+        struct fv_network_base *base = fv_network_get_base(nw);
+        int res;
+
+        res = write_command(nw,
+                            FV_PROTO_UPDATE_APPEARANCE,
+
+                            FV_PROTO_TYPE_UINT8,
+                            base->player.appearance.image,
+
+                            FV_PROTO_TYPE_NONE);
+
+        if (res != -1) {
+                base->appearance_dirty = false;
                 return true;
         } else {
                 return false;
@@ -193,8 +219,13 @@ fill_write_buf(struct fv_network *nw)
                         return;
         }
 
-        if (base->player_dirty) {
-                if (!write_player(nw))
+        if (base->appearance_dirty) {
+                if (!write_appearance(nw))
+                        return;
+        }
+
+        if (base->position_dirty) {
+                if (!write_position(nw))
                         return;
         }
 
@@ -294,25 +325,52 @@ handle_player_position(struct fv_network *nw,
                        size_t payload_length)
 {
         struct fv_network_base *base = fv_network_get_base(nw);
-        struct fv_person player;
+        struct fv_person *person;
+        struct fv_person_position position;
         uint16_t player_num;
 
         if (!fv_proto_read_payload(payload,
                                    payload_length,
                                    FV_PROTO_TYPE_UINT16, &player_num,
-                                   FV_PROTO_TYPE_UINT32, &player.x_position,
-                                   FV_PROTO_TYPE_UINT32, &player.y_position,
-                                   FV_PROTO_TYPE_UINT16, &player.direction,
+                                   FV_PROTO_TYPE_UINT32, &position.x,
+                                   FV_PROTO_TYPE_UINT32, &position.y,
+                                   FV_PROTO_TYPE_UINT16, &position.direction,
                                    FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
         }
 
         if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
-                memcpy(base->players.data +
-                       player_num * sizeof (struct fv_person),
-                       &player,
-                       sizeof player);
+                person = (struct fv_person *) base->players.data + player_num;
+                person->pos = position;
+                fv_bitmask_set(&base->dirty_players, player_num, true);
+        }
+
+        return true;
+}
+
+static bool
+handle_player_appearance(struct fv_network *nw,
+                         const uint8_t *payload,
+                         size_t payload_length)
+{
+        struct fv_network_base *base = fv_network_get_base(nw);
+        struct fv_person *person;
+        struct fv_person_appearance appearance;
+        uint16_t player_num;
+
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT16, &player_num,
+                                   FV_PROTO_TYPE_UINT8, &appearance.image,
+                                   FV_PROTO_TYPE_NONE)) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
+                person = (struct fv_person *) base->players.data + player_num;
+                person->appearance = appearance;
                 fv_bitmask_set(&base->dirty_players, player_num, true);
         }
 
@@ -372,6 +430,11 @@ handle_message(struct fv_network *nw,
                                               message_payload,
                                               message_payload_length);
 
+        case FV_PROTO_PLAYER_APPEARANCE:
+                return handle_player_appearance(nw,
+                                                message_payload,
+                                                message_payload_length);
+
         case FV_PROTO_PLAYER_SPEECH:
                 return handle_player_speech(nw,
                                             message_payload,
@@ -389,7 +452,8 @@ init_new_connection(struct fv_network *nw)
         struct fv_network_base *base = fv_network_get_base(nw);
 
         base->sent_hello = false;
-        base->player_dirty = true;
+        base->position_dirty = true;
+        base->appearance_dirty = true;
         base->last_update_time = SDL_GetTicks();
 }
 

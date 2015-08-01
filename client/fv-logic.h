@@ -34,7 +34,7 @@ enum fv_logic_state_change {
         /* The player position or direction has changed. Ie, something
          * that should be sent over the network.
          */
-        FV_LOGIC_STATE_CHANGE_PLAYER = 1 << 0,
+        FV_LOGIC_STATE_CHANGE_POSITION = 1 << 0,
         /* The player's center has changed. This only affects rendering. */
         FV_LOGIC_STATE_CHANGE_CENTER = 1 << 1,
         /* There is something happening that might cause another state
