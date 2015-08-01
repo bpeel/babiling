@@ -33,6 +33,7 @@
 #define FV_PROTO_TYPE_SIMPLE(enum_name, type_name)      \
         FV_PROTO_TYPE(enum_name, type_name, type_name)
 
+FV_PROTO_TYPE(FV_PROTO_TYPE_UINT8, uint8_t, unsigned int)
 FV_PROTO_TYPE(FV_PROTO_TYPE_UINT16, uint16_t, unsigned int)
 FV_PROTO_TYPE_SIMPLE(FV_PROTO_TYPE_UINT32, uint32_t)
 FV_PROTO_TYPE_SIMPLE(FV_PROTO_TYPE_UINT64, uint64_t)

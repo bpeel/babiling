@@ -72,12 +72,20 @@
 #define FV_PROTO_MAX_FRAME_HEADER_LENGTH (1 + 1 + 8 + 4)
 
 enum fv_proto_type {
+        FV_PROTO_TYPE_UINT8,
         FV_PROTO_TYPE_UINT16,
         FV_PROTO_TYPE_UINT32,
         FV_PROTO_TYPE_UINT64,
         FV_PROTO_TYPE_BLOB,
         FV_PROTO_TYPE_NONE
 };
+
+static inline void
+fv_proto_write_uint8_t(uint8_t *buffer,
+                       uint8_t value)
+{
+        *buffer = value;
+}
 
 static inline void
 fv_proto_write_uint16_t(uint8_t *buffer,
@@ -114,6 +122,12 @@ fv_proto_write_command(uint8_t *buffer,
                        size_t buffer_length,
                        uint8_t command,
                        ...);
+
+static inline uint8_t
+fv_proto_read_uint8_t(const uint8_t *buffer)
+{
+        return *buffer;
+}
 
 static inline uint16_t
 fv_proto_read_uint16_t(const uint8_t *buffer)
