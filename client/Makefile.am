@@ -1,11 +1,13 @@
 SUBDIRS = data rply
 
 bin_PROGRAMS =
+noinst_PROGRAMS =
 
 if IS_EMSCRIPTEN
 bin_PROGRAMS += babiling.html
 else
 bin_PROGRAMS += babiling
+noinst_PROGRAMS += babiling-editor
 endif
 
 AM_CFLAGS = \
@@ -113,6 +115,38 @@ babiling_html_LDFLAGS = \
 	--shell-file $(srcdir)/babiling-shell.html \
 	$(NULL)
 babiling_html_LDADD = \
+	$(ldadd) \
+	$(NULL)
+
+babiling_editor_SOURCES = \
+	fv-array-object.c \
+	fv-array-object.h \
+	fv-editor.c \
+	fv-data.c \
+	fv-data.h \
+	fv-error-message.h \
+	fv-error-message-native.c \
+	fv-error-message.h \
+	fv-gl.c \
+	fv-gl.h \
+	fv-image-data-native.c \
+	fv-image-data.h \
+	fv-map.c \
+	fv-map.h \
+	fv-map-buffer.c \
+	fv-map-buffer.h \
+	fv-map-painter.c \
+	fv-map-painter.h \
+	fv-matrix.c \
+	fv-matrix.h \
+	fv-model.c \
+	fv-model.h \
+	fv-shader-data.c \
+	fv-shader-data.h \
+	fv-transform.c \
+	fv-transform.h \
+	$(NULL)
+babiling_editor_LDADD = \
 	$(ldadd) \
 	$(NULL)
 

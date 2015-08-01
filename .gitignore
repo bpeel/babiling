@@ -24,6 +24,7 @@
 /client/Makefile.in
 /client/Makefile
 /client/babiling
+/client/babiling-editor
 /client/babiling.html
 /client/babiling.html.mem
 /client/babiling.js
