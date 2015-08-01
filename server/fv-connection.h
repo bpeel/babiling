@@ -42,6 +42,7 @@ enum fv_connection_event_type {
         FV_CONNECTION_EVENT_NEW_PLAYER,
         FV_CONNECTION_EVENT_RECONNECT,
         FV_CONNECTION_EVENT_UPDATE_POSITION,
+        FV_CONNECTION_EVENT_UPDATE_APPEARANCE,
         FV_CONNECTION_EVENT_SPEECH,
 };
 
@@ -62,6 +63,12 @@ struct fv_connection_update_position_event {
         uint32_t x_position;
         uint32_t y_position;
         uint16_t direction;
+};
+
+struct fv_connection_update_appearance_event {
+        struct fv_connection_event base;
+
+        uint8_t image;
 };
 
 struct fv_connection_speech_event {

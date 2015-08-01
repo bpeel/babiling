@@ -195,6 +195,30 @@ handle_update_position(struct fv_network *nw,
         return true;
 }
 
+static bool
+handle_update_appearance(struct fv_network *nw,
+                         struct fv_network_client *client,
+                         struct fv_connection_update_appearance_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        struct fv_player *player = fv_connection_get_player(client->connection);
+
+        if (player == NULL) {
+                fv_log("Client %s sent an appearance update before a hello "
+                       "message",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        player->image = event->image;
+
+        dirty_player(nw, player, FV_PLAYER_STATE_APPEARANCE);
+
+        return true;
+}
+
 static void
 xor_bytes(uint64_t *id,
           const uint8_t *data,
@@ -272,7 +296,7 @@ handle_new_player(struct fv_network *nw,
         fv_connection_set_player(client->connection,
                                  player,
                                  false /* from_reconnect */);
-        dirty_player(nw, player, FV_PLAYER_STATE_POSITION);
+        dirty_player(nw, player, FV_PLAYER_STATE_ALL);
         dirty_n_players(nw);
 
         return true;
@@ -365,6 +389,12 @@ connection_event_cb(struct fv_listener *listener,
         case FV_CONNECTION_EVENT_UPDATE_POSITION: {
                 struct fv_connection_update_position_event *de = (void *) event;
                 return handle_update_position(nw, client, de);
+        }
+
+        case FV_CONNECTION_EVENT_UPDATE_APPEARANCE: {
+                struct fv_connection_update_appearance_event *de =
+                        (void *) event;
+                return handle_update_appearance(nw, client, de);
         }
 
         case FV_CONNECTION_EVENT_RECONNECT: {

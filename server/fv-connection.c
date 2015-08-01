@@ -263,6 +263,26 @@ write_player_state(struct fv_connection *conn,
         if (player_num >= conn->player->num)
                 player_num--;
 
+        if (state->flags & FV_PLAYER_STATE_APPEARANCE) {
+                wrote = write_command(conn,
+
+                                      FV_PROTO_PLAYER_APPEARANCE,
+
+                                      FV_PROTO_TYPE_UINT16,
+                                      (uint16_t) player_num,
+
+                                      FV_PROTO_TYPE_UINT8,
+                                      player->image,
+
+                                      FV_PROTO_TYPE_NONE);
+
+                if (wrote == -1)
+                        return false;
+
+                conn->write_buf_pos += wrote;
+                state->flags &= ~FV_PLAYER_STATE_APPEARANCE;
+        }
+
         if (state->flags & FV_PLAYER_STATE_POSITION) {
                 wrote = write_command(conn,
 
@@ -569,6 +589,29 @@ handle_update_position(struct fv_connection *conn)
 }
 
 static bool
+handle_update_appearance(struct fv_connection *conn)
+{
+        struct fv_connection_update_appearance_event event;
+
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
+
+                                   FV_PROTO_TYPE_UINT8,
+                                   &event.image,
+
+                                   FV_PROTO_TYPE_NONE)) {
+                fv_log("Invalid update appearance command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_UPDATE_APPEARANCE,
+                          &event.base);
+}
+
+static bool
 handle_keep_alive(struct fv_connection *conn)
 {
         if (!fv_proto_read_payload(conn->message_data + 1,
@@ -656,6 +699,8 @@ process_message(struct fv_connection *conn)
                 return handle_reconnect(conn);
         case FV_PROTO_UPDATE_POSITION:
                 return handle_update_position(conn);
+        case FV_PROTO_UPDATE_APPEARANCE:
+                return handle_update_appearance(conn);
         case FV_PROTO_KEEP_ALIVE:
                 return handle_keep_alive(conn);
         case FV_PROTO_SPEECH:
