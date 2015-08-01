@@ -43,6 +43,7 @@
 #include "fv-audio-buffer.h"
 #include "fv-mutex.h"
 #include "fv-audio-device.h"
+#include "fv-random.h"
 
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
@@ -1268,6 +1269,8 @@ main(int argc, char **argv)
                 ret = EXIT_FAILURE;
                 goto out_addresses;
         }
+
+        fv_random_init();
 
         res = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO);
         if (res < 0) {

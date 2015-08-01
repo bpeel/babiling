@@ -58,6 +58,7 @@ sources = \
 	fv-person.h \
 	fv-person-painter.c \
 	fv-person-painter.h \
+	fv-random.h \
 	fv-recorder.c \
 	fv-recorder.h \
 	fv-shader-data.c \
@@ -90,6 +91,7 @@ babiling_SOURCES = \
 	fv-network-native.c \
 	fv-image-data-native.c \
 	fv-microphone-pulse.c \
+	fv-random-native.c \
 	$(NULL)
 babiling_LDADD = \
 	$(ldadd) \
@@ -103,6 +105,7 @@ babiling_html_SOURCES = \
 	fv-network-emscripten.c \
 	fv-image-data-emscripten.c \
 	fv-microphone-emscripten.c \
+	fv-random-emscripten.c \
 	$(NULL)
 babiling_html_LDFLAGS = \
 	--pre-js $(srcdir)/configure-emscripten.js \
