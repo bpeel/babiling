@@ -689,7 +689,6 @@ paint_special(struct fv_map_painter *painter,
 
 void
 fv_map_painter_paint(struct fv_map_painter *painter,
-                     struct fv_logic *logic,
                      const struct fv_paint_state *paint_state)
 {
         int x_min, x_max, y_min, y_max;

@@ -300,7 +300,6 @@ fv_game_paint(struct fv_game *game,
                                 &game->paint_state);
 
         fv_map_painter_paint(game->map_painter,
-                             logic,
                              &game->paint_state);
 }
 
