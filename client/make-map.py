@@ -146,8 +146,9 @@ print('''
          ((e) << 12) | \\
          ((s) << 18) | \\
          ((w) << 24))
-const fv_map_block_t
-fv_map[FV_MAP_WIDTH * FV_MAP_HEIGHT] = {
+const struct fv_map
+fv_map = {
+        .blocks = {
 ''')
 
 for y in range(MAP_HEIGHT - 1, -1, -1):
@@ -177,18 +178,17 @@ for y in range(MAP_HEIGHT - 1, -1, -1):
             else:
                 block_type = 'HALF_WALL'
 
-        print('        B(' + block_type, end='')
+        print('                B(' + block_type, end='')
 
         for image_index in (top, north, east, south, west):
             print(', ' + str(image_index), end='')
 
         print('),')
 
-print("};")
+print("        },")
 
 print('''
-const struct fv_map_tile
-fv_map_tiles[FV_MAP_TILES_X * FV_MAP_TILES_Y] = {
+        .tiles = {
 ''')
 
 for y in range(MAP_TILES_Y - 1, -1, -1):
@@ -202,4 +202,7 @@ for y in range(MAP_TILES_Y - 1, -1, -1):
               "                " + str(count) + "\n" +
               "        },\n")
 
-print("};")
+print('''
+        }
+};
+''')
