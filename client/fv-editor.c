@@ -65,6 +65,7 @@ struct data {
         int x_pos;
         int y_pos;
         int distance;
+        int rotation;
 
         struct fv_map_painter *map_painter;
 
@@ -84,6 +85,27 @@ update_position(struct data *data,
                 int x_offset,
                 int y_offset)
 {
+        int t;
+
+        switch (data->rotation) {
+        case 1:
+                t = x_offset;
+                x_offset = y_offset;
+                y_offset = -t;
+                break;
+
+        case 2:
+                x_offset = -x_offset;
+                y_offset = -y_offset;
+                break;
+
+        case 3:
+                t = x_offset;
+                x_offset = -y_offset;
+                y_offset = t;
+                break;
+        }
+
         data->x_pos += x_offset;
         data->y_pos += y_offset;
 
@@ -145,6 +167,11 @@ handle_key_down(struct data *data,
 
         case SDLK_z:
                 update_distance(data, 1);
+                break;
+
+        case SDLK_r:
+                data->rotation = (data->rotation + 1) % 4;
+                queue_redraw(data);
                 break;
         }
 }
@@ -306,6 +333,10 @@ paint(struct data *data)
         fv_matrix_scale(&transform->modelview,
                         FV_EDITOR_SCALE, FV_EDITOR_SCALE, FV_EDITOR_SCALE);
 
+        fv_matrix_rotate(&transform->modelview,
+                         data->rotation * 90.0f,
+                         0.0f, 0.0f, 1.0f);
+
         fv_matrix_translate(&transform->modelview,
                             -paint_state.center_x,
                             -paint_state.center_y,
@@ -420,6 +451,7 @@ main(int argc, char **argv)
         data.x_pos = FV_MAP_WIDTH / 2;
         data.y_pos = FV_MAP_HEIGHT / 2;
         data.distance = FV_EDITOR_MIN_DISTANCE;
+        data.rotation = 0;
 
         res = SDL_Init(SDL_INIT_VIDEO);
         if (res < 0) {
