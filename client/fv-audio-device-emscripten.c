@@ -113,6 +113,7 @@ fv_audio_device_new(fv_audio_device_callback callback,
                         sp.connect(ac.destination);
 
                         Module.audioContext = ac;
+                        Module.audioInputProcessor = sp;
 
                         return ac.sampleRate;
                 }, dev);
