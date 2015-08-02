@@ -124,6 +124,12 @@ struct data {
         int distance;
         int rotation;
 
+        struct {
+                fv_map_block_t block;
+                int special_num;
+                uint16_t special_rotation;
+        } clipboard;
+
         GLuint cursor_program;
         GLuint cursor_buffer;
         struct fv_array_object *cursor_array_object;
@@ -386,6 +392,46 @@ rotate_special(struct data *data,
 }
 
 static void
+copy(struct data *data)
+{
+        struct fv_map_special *special;
+
+        data->clipboard.block =
+                data->map.blocks[data->x_pos + data->y_pos * FV_MAP_WIDTH];
+
+        special = get_special(data, data->x_pos, data->y_pos);
+
+        if (special) {
+                data->clipboard.special_num = special->num;
+                data->clipboard.special_rotation = special->rotation;
+        } else {
+                data->clipboard.special_num = -1;
+        }
+}
+
+static void
+paste(struct data *data)
+{
+        struct fv_map_special *special;
+
+        data->map.blocks[data->x_pos + data->y_pos * FV_MAP_WIDTH] =
+                data->clipboard.block;
+
+        if (data->clipboard.special_num == -1) {
+                remove_special(data, data->x_pos, data->y_pos);
+        } else {
+                set_special(data,
+                            data->x_pos, data->y_pos,
+                            data->clipboard.special_num);
+                special = get_special(data, data->x_pos, data->y_pos);
+                if (special)
+                        special->rotation = data->clipboard.special_rotation;
+        }
+
+        redraw_map(data);
+}
+
+static void
 set_pixel(uint8_t *buf,
           int x, int y,
           int ox, int oy,
@@ -581,6 +627,14 @@ handle_key_down(struct data *data,
 
         case SDLK_m:
                 next_special(data);
+                break;
+
+        case SDLK_c:
+                copy(data);
+                break;
+
+        case SDLK_v:
+                paste(data);
                 break;
 
         case SDLK_LEFTBRACKET:
@@ -965,6 +1019,10 @@ main(int argc, char **argv)
         data.y_pos = FV_MAP_HEIGHT / 2;
         data.distance = FV_EDITOR_MIN_DISTANCE;
         data.rotation = 0;
+
+        data.clipboard.block = 0;
+        data.clipboard.special_num = -1;
+        data.clipboard.special_rotation = 0;
 
         res = SDL_Init(SDL_INIT_VIDEO);
         if (res < 0) {
