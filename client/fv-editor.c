@@ -176,6 +176,53 @@ redraw_map(struct data *data)
         queue_redraw(data);
 }
 
+static struct fv_map_special *
+get_special(struct data *data,
+            int x, int y)
+{
+        int tx = x / FV_MAP_TILE_WIDTH;
+        int ty = y / FV_MAP_TILE_HEIGHT;
+        struct fv_map_tile *tile =
+                data->map.tiles + tx + ty * FV_MAP_TILES_X;
+        struct fv_map_special *special;
+        int i;
+
+        for (i = 0; i < tile->n_specials; i++) {
+                special = tile->specials + i;
+                if (special->x == x && special->y == y)
+                        return special;
+        }
+
+        return NULL;
+}
+
+static void
+set_special(struct data *data,
+            int x, int y,
+            int special_num)
+{
+        struct fv_map_special *special = get_special(data, x, y);
+        struct fv_map_tile *tile;
+        int tx, ty;
+
+        if (special) {
+                special->num = special_num;
+                return;
+        }
+
+        tx = x / FV_MAP_TILE_WIDTH;
+        ty = y / FV_MAP_TILE_HEIGHT;
+        tile = data->map.tiles + tx + ty * FV_MAP_TILES_X;
+
+        if (tile->n_specials < FV_MAP_MAX_SPECIALS) {
+                special = tile->specials + tile->n_specials++;
+                special->num = special_num;
+                special->x = x;
+                special->y = y;
+                special->rotation = 0;
+        }
+}
+
 static void
 update_position(struct data *data,
                 int x_offset,
@@ -260,19 +307,6 @@ toggle_height(struct data *data)
         redraw_map(data);
 }
 
-static void
-set_pixel(uint8_t *buf,
-          int x, int y,
-          int ox, int oy,
-          const struct color_map *color)
-{
-        y = FV_MAP_HEIGHT - 1 - y;
-        buf += (x * 4 + ox) * 3 + (y * 4 + oy) * FV_MAP_WIDTH * 4 * 3;
-        buf[0] = color->r;
-        buf[1] = color->g;
-        buf[2] = color->b;
-}
-
 static const struct color_map *
 lookup_color(const struct color_map *map,
              int value)
@@ -285,6 +319,42 @@ lookup_color(const struct color_map *map,
         }
 
         return map;
+}
+
+static void
+next_special(struct data *data)
+{
+        struct fv_map_special *special =
+                get_special(data, data->x_pos, data->y_pos);
+        const struct color_map *color;
+        int special_num;
+
+        if (special == NULL) {
+                special_num = 0;
+        } else {
+                color = lookup_color(special_map, special->num) + 1;
+                if (color->r == -1 || color->value == -1)
+                        special_num = 0;
+                else
+                        special_num = color->value;
+        }
+
+        set_special(data, data->x_pos, data->y_pos, special_num);
+
+        redraw_map(data);
+}
+
+static void
+set_pixel(uint8_t *buf,
+          int x, int y,
+          int ox, int oy,
+          const struct color_map *color)
+{
+        y = FV_MAP_HEIGHT - 1 - y;
+        buf += (x * 4 + ox) * 3 + (y * 4 + oy) * FV_MAP_WIDTH * 4 * 3;
+        buf[0] = color->r;
+        buf[1] = color->g;
+        buf[2] = color->b;
 }
 
 static void
@@ -462,6 +532,10 @@ handle_key_down(struct data *data,
 
         case SDLK_s:
                 save(data);
+                break;
+
+        case SDLK_m:
+                next_special(data);
                 break;
         }
 }
