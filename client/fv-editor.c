@@ -345,6 +345,32 @@ next_special(struct data *data)
 }
 
 static void
+remove_special(struct data *data,
+               int x, int y)
+{
+        struct fv_map_special *special = get_special(data, x, y);
+        struct fv_map_tile *tile;
+        int tx, ty;
+
+        if (special == NULL)
+                return;
+
+        tx = x / FV_MAP_TILE_WIDTH;
+        ty = y / FV_MAP_TILE_HEIGHT;
+        tile = data->map.tiles + tx + ty * FV_MAP_TILES_X;
+
+        /* Replace this special with the last one */
+        *special = tile->specials[--tile->n_specials];
+}
+
+static void
+remove_special_at_cursor(struct data *data)
+{
+        remove_special(data, data->x_pos, data->y_pos);
+        redraw_map(data);
+}
+
+static void
 rotate_special(struct data *data,
                int amount)
 {
@@ -547,6 +573,10 @@ handle_key_down(struct data *data,
 
         case SDLK_s:
                 save(data);
+                break;
+
+        case SDLK_n:
+                remove_special_at_cursor(data);
                 break;
 
         case SDLK_m:
