@@ -336,6 +336,40 @@ lookup_color(const struct color_map *map,
 }
 
 static void
+next_image(struct data *data,
+           int image_offset,
+           const struct color_map *map)
+{
+        fv_map_block_t *block =
+                data->map.blocks + data->x_pos + data->y_pos * FV_MAP_WIDTH;
+        int value = (*block >> (image_offset * 6)) & ((1 << 6) - 1);
+        const struct color_map *color;
+
+        color = lookup_color(map, value) + 1;
+        if (color->r == -1)
+                color = map;
+
+        *block = ((*block & ~(((1 << 6) - 1) << (image_offset * 6))) |
+                  (color->value << (image_offset * 6)));
+
+        redraw_map(data);
+}
+
+static void
+next_top(struct data *data)
+{
+        next_image(data, 0, top_map);
+}
+
+static void
+next_side(struct data *data,
+          int side_num)
+{
+        side_num = (side_num + data->rotation) % 4;
+        next_image(data, side_num + 1, side_map);
+}
+
+static void
 next_special(struct data *data)
 {
         struct fv_map_special *special =
@@ -627,6 +661,26 @@ handle_key_down(struct data *data,
 
         case SDLK_s:
                 save(data);
+                break;
+
+        case SDLK_t:
+                next_top(data);
+                break;
+
+        case SDLK_i:
+                next_side(data, 0);
+                break;
+
+        case SDLK_l:
+                next_side(data, 1);
+                break;
+
+        case SDLK_k:
+                next_side(data, 2);
+                break;
+
+        case SDLK_j:
+                next_side(data, 3);
                 break;
 
         case SDLK_n:
