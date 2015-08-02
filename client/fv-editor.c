@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <SDL.h>
 #include <stdbool.h>
+#include <string.h>
+#include <errno.h>
 
 #include "fv-image-data.h"
 #include "fv-shader-data.h"
@@ -31,6 +33,7 @@
 #include "fv-error-message.h"
 #include "fv-map-painter.h"
 #include "fv-array-object.h"
+#include "fv-data.h"
 
 #define MIN_GL_MAJOR_VERSION 3
 #define MIN_GL_MINOR_VERSION 3
@@ -69,6 +72,37 @@ cursor_fragment_shader[] =
         "{\n"
         "        color = vec4(0.6, 0.6, 0.8, 0.8);\n"
         "}\n";
+
+struct color_map {
+        int r, g, b, value;
+};
+
+static const struct color_map
+top_map[] = {
+        { 0xbb, 0x99, 0x55, 2 }, /* brick flooring */
+        { 0xcc, 0x99, 0x00, 0 }, /* wall top */
+        { 0x44, 0x55, 0x22, 4 }, /* grass */
+        { -1 }
+};
+
+static const struct color_map
+side_map[] = {
+        { 0x66, 0x44, 0x44, 6 }, /* brick wall */
+        { 0x99, 0xcc, 0xcc, 9 }, /* inner wall */
+        { 0x55, 0x66, 0xcc, 12 }, /* welcome poster 1 */
+        { 0x55, 0x66, 0xdd, 14 }, /* welcome poster 2 */
+        { -1 }
+};
+
+static const struct color_map
+special_map[] = {
+        { 0xdd, 0x55, 0x33, 0 }, /* table */
+        { 0x00, 0x00, 0xee, 1 }, /* chair */
+        { 0xbb, 0x33, 0xbb, 2 }, /* barrel */
+        { 0xbb, 0xaa, 0xaa, 3 }, /* bar */
+        { 0x00, 0x00, 0x00, -1 }, /* covered by a neighbouring special */
+        { -1 }
+};
 
 struct data {
         struct fv_image_data *image_data;
@@ -227,6 +261,164 @@ toggle_height(struct data *data)
 }
 
 static void
+set_pixel(uint8_t *buf,
+          int x, int y,
+          int ox, int oy,
+          const struct color_map *color)
+{
+        y = FV_MAP_HEIGHT - 1 - y;
+        buf += (x * 4 + ox) * 3 + (y * 4 + oy) * FV_MAP_WIDTH * 4 * 3;
+        buf[0] = color->r;
+        buf[1] = color->g;
+        buf[2] = color->b;
+}
+
+static const struct color_map *
+lookup_color(const struct color_map *map,
+             int value)
+{
+        int i;
+
+        for (i = 0; map[i].r != -1; i++) {
+                if (map[i].value == value)
+                        return map + i;
+        }
+
+        return map;
+}
+
+static void
+set_special_colors(uint8_t *buf,
+                   int x, int y,
+                   const struct color_map *color)
+{
+        set_pixel(buf, x, y, 2, 1, color);
+        set_pixel(buf, x, y, 0, 0, color);
+        set_pixel(buf, x, y, 3, 0, color);
+        set_pixel(buf, x, y, 0, 3, color);
+        set_pixel(buf, x, y, 3, 3, color);
+}
+
+static void
+save_block(uint8_t *buf,
+           int x, int y,
+           fv_map_block_t block)
+{
+        const struct color_map *color;
+        int type;
+        int i, j;
+
+        color = lookup_color(top_map, FV_MAP_GET_BLOCK_TOP_IMAGE(block));
+
+        for (i = 0; i < 4; i++) {
+                for (j = 0; j < 4; j++) {
+                        set_pixel(buf, x, y, i, j, color);
+                }
+        }
+
+        type = FV_MAP_GET_BLOCK_TYPE(block);
+
+        if (type == FV_MAP_BLOCK_TYPE_SPECIAL) {
+                color = lookup_color(special_map, -1);
+                set_special_colors(buf, x, y, color);
+        } else if (type != FV_MAP_BLOCK_TYPE_FLOOR) {
+                color = lookup_color(side_map,
+                                     FV_MAP_GET_BLOCK_NORTH_IMAGE(block));
+                for (i = 0; i < 3; i++)
+                        set_pixel(buf, x, y, i, 0, color);
+                color = lookup_color(side_map,
+                                     FV_MAP_GET_BLOCK_EAST_IMAGE(block));
+                for (i = 0; i < 3; i++)
+                        set_pixel(buf, x, y, 3, i, color);
+                color = lookup_color(side_map,
+                                     FV_MAP_GET_BLOCK_SOUTH_IMAGE(block));
+                for (i = 0; i < 3; i++)
+                        set_pixel(buf, x, y, i + 1, 3, color);
+                color = lookup_color(side_map,
+                                     FV_MAP_GET_BLOCK_WEST_IMAGE(block));
+                for (i = 0; i < 3; i++)
+                        set_pixel(buf, x, y, 0, i + 1, color);
+
+                if (type == FV_MAP_BLOCK_TYPE_HALF_WALL)
+                        set_pixel(buf, x, y, 1, 2, color);
+        }
+}
+
+static void
+save_special(struct data *data,
+             uint8_t *buf,
+             const struct fv_map_special *special)
+{
+        const struct color_map *color;
+        struct color_map rotation_color;
+
+        color = lookup_color(special_map, special->num);
+        set_special_colors(buf, special->x, special->y, color);
+
+        if (special->rotation) {
+                rotation_color.r = special->rotation >> 8;
+                rotation_color.g = special->rotation & 0xff;
+                rotation_color.b = 0;
+                set_pixel(buf, special->x, special->y, 2, 2, &rotation_color);
+        }
+}
+
+static void
+save(struct data *data)
+{
+        uint8_t *buf;
+        char *filename;
+        FILE *out;
+        int y, x, i, j;
+
+        filename = fv_data_get_filename("../fv-map.ppm");
+
+        if (filename == NULL) {
+                fv_error_message("error getting save filename");
+                return;
+        }
+
+        buf = fv_alloc(FV_MAP_WIDTH * FV_MAP_HEIGHT * 4 * 4 * 3);
+
+        for (y = 0; y < FV_MAP_HEIGHT; y++) {
+                for (x = 0; x < FV_MAP_WIDTH; x++) {
+                        save_block(buf,
+                                   x, y,
+                                   data->map.blocks[y * FV_MAP_WIDTH + x]);
+                }
+        }
+
+        for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++) {
+                for (j = 0; j < data->map.tiles[i].n_specials; j++) {
+                        save_special(data,
+                                     buf,
+                                     data->map.tiles[i].specials + j);
+                }
+        }
+
+        out = fopen(filename, "wb");
+
+        fv_free(filename);
+
+        if (out == NULL) {
+                fv_error_message("error saving: %s", strerror(errno));
+        } else {
+                fprintf(out,
+                        "P6\n"
+                        "%i %i\n"
+                        "255\n",
+                        FV_MAP_WIDTH * 4,
+                        FV_MAP_HEIGHT * 4);
+
+                fwrite(buf, FV_MAP_WIDTH * FV_MAP_HEIGHT * 4 * 4 * 3, 1, out);
+
+                fclose(out);
+        }
+
+        fv_free(buf);
+}
+
+static void
 handle_key_down(struct data *data,
                  const SDL_KeyboardEvent *event)
 {
@@ -266,6 +458,10 @@ handle_key_down(struct data *data,
 
         case SDLK_h:
                 toggle_height(data);
+                break;
+
+        case SDLK_s:
+                save(data);
                 break;
         }
 }
