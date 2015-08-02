@@ -49,28 +49,32 @@
 #define FV_EDITOR_SCALE 0.7f
 
 static const char
-cursor_vertex_shader[] =
+highlight_vertex_shader[] =
         "#version 330\n"
         "\n"
         "layout(location = 0) in vec3 position;\n"
+        "layout(location = 1) in vec4 color_attrib;\n"
+        "out vec4 color;\n"
         "uniform mat4 transform;\n"
         "\n"
         "void\n"
         "main()\n"
         "{\n"
         "        gl_Position = transform * vec4(position, 1.0);\n"
+        "        color = color_attrib;\n"
         "}\n";
 
 static const char
-cursor_fragment_shader[] =
+highlight_fragment_shader[] =
         "#version 330\n"
         "\n"
-        "layout(location = 0) out vec4 color;\n"
+        "layout(location = 0) out vec4 frag_color;\n"
+        "in vec4 color;\n"
         "\n"
         "void\n"
         "main()\n"
         "{\n"
-        "        color = vec4(0.6, 0.6, 0.8, 0.8);\n"
+        "        frag_color = color;\n"
         "}\n";
 
 struct color_map {
@@ -130,10 +134,10 @@ struct data {
                 uint16_t special_rotation;
         } clipboard;
 
-        GLuint cursor_program;
-        GLuint cursor_buffer;
-        struct fv_array_object *cursor_array_object;
-        GLint cursor_transform_uniform;
+        GLuint highlight_program;
+        GLuint highlight_buffer;
+        struct fv_array_object *highlight_array_object;
+        GLint highlight_transform_uniform;
 
         struct fv_map_painter *map_painter;
 
@@ -142,8 +146,9 @@ struct data {
         bool redraw_queued;
 };
 
-struct cursor_vertex {
+struct highlight_vertex {
         float x, y, z;
+        float r, g, b, a;
 };
 
 static void
@@ -736,57 +741,100 @@ handled:
 }
 
 static void
-draw_cursor(struct data *data,
-            const struct fv_paint_state *paint_state)
+draw_highlight(struct data *data,
+               const struct fv_paint_state *paint_state,
+               int x, int y,
+               float z_offset,
+               float red, float green, float blue)
 {
-        struct cursor_vertex vertices[4];
-        int block_pos = data->x_pos + data->y_pos * FV_MAP_WIDTH;
+        struct highlight_vertex vertices[4];
+        int block_pos = x + y * FV_MAP_WIDTH;
         float z_pos;
         int i;
 
         switch (FV_MAP_GET_BLOCK_TYPE(data->map.blocks[block_pos])) {
         case FV_MAP_BLOCK_TYPE_FULL_WALL:
-                z_pos = 2.1f;
+                z_pos = 2.0f + z_offset;
                 break;
         case FV_MAP_BLOCK_TYPE_HALF_WALL:
-                z_pos = 1.1f;
+                z_pos = 1.1f + z_offset;
                 break;
         default:
-                z_pos = 0.1f;
+                z_pos = 0.1f + z_offset;
                 break;
         }
 
-        for (i = 0; i < FV_N_ELEMENTS(vertices); i++)
+        for (i = 0; i < FV_N_ELEMENTS(vertices); i++) {
                 vertices[i].z = z_pos;
+                vertices[i].r = red * 0.8f;
+                vertices[i].g = green * 0.8f;
+                vertices[i].b = blue * 0.8f;
+                vertices[i].a = 0.8f;
+        }
 
-        vertices[0].x = data->x_pos;
-        vertices[0].y = data->y_pos;
-        vertices[1].x = data->x_pos + 1;
-        vertices[1].y = data->y_pos;
-        vertices[2].x = data->x_pos;
-        vertices[2].y = data->y_pos + 1;
-        vertices[3].x = data->x_pos + 1;
-        vertices[3].y = data->y_pos + 1;
+        vertices[0].x = x;
+        vertices[0].y = y;
+        vertices[1].x = x + 1;
+        vertices[1].y = y;
+        vertices[2].x = x;
+        vertices[2].y = y + 1;
+        vertices[3].x = x + 1;
+        vertices[3].y = y + 1;
 
-        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, data->cursor_buffer);
+        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, data->highlight_buffer);
         fv_gl.glBufferData(GL_ARRAY_BUFFER,
                            sizeof vertices,
                            vertices,
                            GL_STREAM_DRAW);
 
-        fv_gl.glUseProgram(data->cursor_program);
-        fv_gl.glUniformMatrix4fv(data->cursor_transform_uniform,
+        fv_gl.glUseProgram(data->highlight_program);
+        fv_gl.glUniformMatrix4fv(data->highlight_transform_uniform,
                                  1, /* count */
                                  GL_FALSE, /* transpose */
                                  &paint_state->transform.mvp.xx);
 
-        fv_array_object_bind(data->cursor_array_object);
+        fv_array_object_bind(data->highlight_array_object);
 
         fv_gl.glEnable(GL_DEPTH_TEST);
         fv_gl.glEnable(GL_BLEND);
         fv_gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         fv_gl.glDisable(GL_BLEND);
         fv_gl.glDisable(GL_DEPTH_TEST);
+}
+
+static void
+draw_cursor(struct data *data,
+            const struct fv_paint_state *paint_state)
+{
+        draw_highlight(data,
+                       paint_state,
+                       data->x_pos, data->y_pos,
+                       0.1f, /* z_offset */
+                       0.75f, 0.75f, 1.0f /* color */);
+}
+
+static void
+draw_special_blocks(struct data *data,
+                    const struct fv_paint_state *paint_state)
+{
+        fv_map_block_t block;
+        int y, x;
+
+        for (y = 0; y < FV_MAP_HEIGHT; y++) {
+                for (x = 0; x < FV_MAP_WIDTH; x++) {
+                        block = data->map.blocks[x + y * FV_MAP_WIDTH];
+                        if (FV_MAP_GET_BLOCK_TYPE(block) !=
+                            FV_MAP_BLOCK_TYPE_SPECIAL)
+                                continue;
+
+                        draw_highlight(data,
+                                       paint_state,
+                                       x, y,
+                                       0.05f, /* z_offset */
+                                       0.75f, 1.0f, 0.75f /* color */);
+                }
+        }
+
 }
 
 static void
@@ -850,6 +898,7 @@ paint(struct data *data)
         fv_map_painter_paint(data->map_painter,
                              &paint_state);
 
+        draw_special_blocks(data, &paint_state);
         draw_cursor(data, &paint_state);
 
         SDL_GL_SwapWindow(data->window);
@@ -939,7 +988,7 @@ make_shader(GLenum type,
 }
 
 static GLuint
-make_cursor_program(void)
+make_highlight_program(void)
 {
         GLuint shader;
         GLint link_status;
@@ -947,11 +996,11 @@ make_cursor_program(void)
 
         program = fv_gl.glCreateProgram();
 
-        shader = make_shader(GL_VERTEX_SHADER, cursor_vertex_shader);
+        shader = make_shader(GL_VERTEX_SHADER, highlight_vertex_shader);
         fv_gl.glAttachShader(program, shader);
         fv_gl.glDeleteShader(shader);
 
-        shader = make_shader(GL_FRAGMENT_SHADER, cursor_fragment_shader);
+        shader = make_shader(GL_FRAGMENT_SHADER, highlight_fragment_shader);
         fv_gl.glAttachShader(program, shader);
         fv_gl.glDeleteShader(shader);
 
@@ -960,7 +1009,7 @@ make_cursor_program(void)
         fv_gl.glGetProgramiv(program, GL_LINK_STATUS, &link_status);
 
         if (!link_status) {
-                fv_error_message("failed to link cursor program");
+                fv_error_message("failed to link highlight program");
                 fv_gl.glDeleteProgram(program);
                 return 0;
         }
@@ -969,21 +1018,30 @@ make_cursor_program(void)
 }
 
 static void
-make_cursor_buffer(struct data *data)
+make_highlight_buffer(struct data *data)
 {
-        fv_gl.glGenBuffers(1, &data->cursor_buffer);
-        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, data->cursor_buffer);
+        fv_gl.glGenBuffers(1, &data->highlight_buffer);
+        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, data->highlight_buffer);
 
-        data->cursor_array_object = fv_array_object_new();
-        fv_array_object_set_attribute(data->cursor_array_object,
+        data->highlight_array_object = fv_array_object_new();
+        fv_array_object_set_attribute(data->highlight_array_object,
                                       0, /* index */
                                       3, /* size */
                                       GL_FLOAT,
                                       GL_FALSE, /* normalized */
-                                      sizeof (struct cursor_vertex),
+                                      sizeof (struct highlight_vertex),
                                       0, /* divisor */
-                                      data->cursor_buffer,
-                                      0 /* buffer_offset */);
+                                      data->highlight_buffer,
+                                      offsetof(struct highlight_vertex, x));
+        fv_array_object_set_attribute(data->highlight_array_object,
+                                      1, /* index */
+                                      4, /* size */
+                                      GL_FLOAT,
+                                      GL_FALSE, /* normalized */
+                                      sizeof (struct highlight_vertex),
+                                      0, /* divisor */
+                                      data->highlight_buffer,
+                                      offsetof(struct highlight_vertex, r));
 }
 
 static void
@@ -1077,16 +1135,16 @@ main(int argc, char **argv)
                 goto out_context;
         }
 
-        data.cursor_program = make_cursor_program();
-        if (data.cursor_program == 0) {
+        data.highlight_program = make_highlight_program();
+        if (data.highlight_program == 0) {
                 ret = EXIT_FAILURE;
                 goto out_context;
         }
 
-        data.cursor_transform_uniform =
-                fv_gl.glGetUniformLocation(data.cursor_program, "transform");
+        data.highlight_transform_uniform =
+                fv_gl.glGetUniformLocation(data.highlight_program, "transform");
 
-        make_cursor_buffer(&data);
+        make_highlight_buffer(&data);
 
         data.image_data_event = SDL_RegisterEvents(1);
 
@@ -1096,9 +1154,9 @@ main(int argc, char **argv)
 
         run_main_loop(&data);
 
-        fv_gl.glDeleteProgram(data.cursor_program);
-        fv_array_object_free(data.cursor_array_object);
-        fv_gl.glDeleteBuffers(1, &data.cursor_buffer);
+        fv_gl.glDeleteProgram(data.highlight_program);
+        fv_array_object_free(data.highlight_array_object);
+        fv_gl.glDeleteBuffers(1, &data.highlight_buffer);
 
         destroy_graphics(&data);
 
