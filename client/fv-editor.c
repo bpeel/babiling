@@ -306,6 +306,9 @@ toggle_height(struct data *data)
                 new_type = FV_MAP_BLOCK_TYPE_FULL_WALL;
                 break;
         case FV_MAP_BLOCK_TYPE_FULL_WALL:
+                new_type = FV_MAP_BLOCK_TYPE_SPECIAL;
+                break;
+        case FV_MAP_BLOCK_TYPE_SPECIAL:
                 new_type = FV_MAP_BLOCK_TYPE_FLOOR;
                 break;
         default:
