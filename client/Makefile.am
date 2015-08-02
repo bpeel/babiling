@@ -75,8 +75,8 @@ BUILT_SOURCES = \
 	fv-map.c \
 	$(NULL)
 
-fv-map.c : fv-map.png make-map.py
-	$(AM_V_GEN)python3 $(srcdir)/make-map.py $(srcdir)/fv-map.png > $@
+fv-map.c : fv-map.ppm make-map.py
+	$(AM_V_GEN)python3 $(srcdir)/make-map.py $(srcdir)/fv-map.ppm > $@
 
 ldadd = \
 	$(SDL_LIBS) \
@@ -152,6 +152,6 @@ babiling_editor_LDADD = \
 
 EXTRA_DIST = \
 	configure-emscripten.js \
-	fv-map.png \
+	fv-map.ppm \
 	make-map.py \
 	$(NULL)
