@@ -345,6 +345,21 @@ next_special(struct data *data)
 }
 
 static void
+rotate_special(struct data *data,
+               int amount)
+{
+        struct fv_map_special *special =
+                get_special(data, data->x_pos, data->y_pos);
+
+        if (special == NULL)
+                return;
+
+        special->rotation += amount;
+
+        redraw_map(data);
+}
+
+static void
 set_pixel(uint8_t *buf,
           int x, int y,
           int ox, int oy,
@@ -536,6 +551,14 @@ handle_key_down(struct data *data,
 
         case SDLK_m:
                 next_special(data);
+                break;
+
+        case SDLK_LEFTBRACKET:
+                rotate_special(data, 256);
+                break;
+
+        case SDLK_RIGHTBRACKET:
+                rotate_special(data, -256);
                 break;
         }
 }
