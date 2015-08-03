@@ -40,13 +40,16 @@
 #define CORE_GL_MAJOR_VERSION MIN_GL_MAJOR_VERSION
 #define CORE_GL_MINOR_VERSION MIN_GL_MINOR_VERSION
 
-/* 40° vertical FOV angle when the height of the display is 2.0 */
-#define FV_EDITOR_NEAR_PLANE 2.7474774194546225f
-#define FV_EDITOR_FAR_PLANE 40.0f
+#define FV_EDITOR_FRUSTUM_TOP 1.428f
+/* 40° vertical FOV angle when the height of the display is
+ * FV_EDITOR_FRUSTUM_TOP*2
+ * ie, top / tan(40 / 2)
+ */
+#define FV_EDITOR_NEAR_PLANE 3.9233977549812007f
+#define FV_EDITOR_FAR_PLANE 57.143f
 
-#define FV_EDITOR_MIN_DISTANCE 10
-#define FV_EDITOR_MAX_DISTANCE 30
-#define FV_EDITOR_SCALE 0.7f
+#define FV_EDITOR_MIN_DISTANCE 14.286f
+#define FV_EDITOR_MAX_DISTANCE 42.857f
 
 static const char
 highlight_vertex_shader[] =
@@ -914,11 +917,11 @@ paint(struct data *data)
         paint_state.visible_h = FV_MAP_HEIGHT * 8.0f;
 
         if (w < h) {
-                right = 1.0f;
-                top = h / (float) w;
+                right = FV_EDITOR_FRUSTUM_TOP;
+                top = h * FV_EDITOR_FRUSTUM_TOP / (float) w;
         } else {
-                top = 1.0f;
-                right = w / (float) h;
+                top = FV_EDITOR_FRUSTUM_TOP;
+                right = w * FV_EDITOR_FRUSTUM_TOP / (float) h;
         }
 
         fv_matrix_init_identity(&transform->projection);
@@ -937,9 +940,6 @@ paint(struct data *data)
         fv_matrix_rotate(&transform->modelview,
                          -30.0f,
                          1.0f, 0.0f, 0.0f);
-
-        fv_matrix_scale(&transform->modelview,
-                        FV_EDITOR_SCALE, FV_EDITOR_SCALE, FV_EDITOR_SCALE);
 
         fv_matrix_rotate(&transform->modelview,
                          data->rotation * 90.0f,
