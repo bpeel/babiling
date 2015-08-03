@@ -27,8 +27,10 @@ uniform sampler2D tex;
 #define textureFunc texture2D
 #endif
 
+varying float tint;
+
 void
 main()
 {
-        gl_FragColor = textureFunc(tex, tex_coord);
+        gl_FragColor = vec4(textureFunc(tex, tex_coord).rgb * tint, 1.0);
 }
