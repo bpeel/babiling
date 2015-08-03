@@ -72,12 +72,8 @@ static const struct fv_shader_data_shader
 fv_shader_data_shaders[] = {
         {
                 GL_FRAGMENT_SHADER,
-                "fv-texture-fragment.glsl",
-                {
-                        FV_SHADER_DATA_PROGRAM_HUD,
-                        FV_SHADER_DATA_PROGRAM_MAP,
-                        PROGRAMS_END
-                }
+                "fv-hud-fragment.glsl",
+                { FV_SHADER_DATA_PROGRAM_HUD, PROGRAMS_END }
         },
         {
                 GL_VERTEX_SHADER,
@@ -96,8 +92,12 @@ fv_shader_data_shaders[] = {
         },
         {
                 GL_FRAGMENT_SHADER,
-                "fv-special-texture-fragment.glsl",
-                { FV_SHADER_DATA_PROGRAM_SPECIAL_TEXTURE, PROGRAMS_END }
+                "fv-lighting-texture-fragment.glsl",
+                {
+                        FV_SHADER_DATA_PROGRAM_SPECIAL_TEXTURE,
+                        FV_SHADER_DATA_PROGRAM_MAP,
+                        PROGRAMS_END
+                }
         },
         {
                 GL_VERTEX_SHADER,
@@ -110,6 +110,7 @@ fv_shader_data_shaders[] = {
                 {
                         FV_SHADER_DATA_PROGRAM_SPECIAL_TEXTURE,
                         FV_SHADER_DATA_PROGRAM_SPECIAL_COLOR,
+                        FV_SHADER_DATA_PROGRAM_MAP,
                         PROGRAMS_END
                 }
         },

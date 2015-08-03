@@ -15,10 +15,10 @@ SHADERS = \
 	fv-hud-vertex.glsl \
 	fv-color-fragment.glsl \
 	fv-lighting.glsl \
-	fv-special-texture-fragment.glsl \
+	fv-lighting-texture-fragment.glsl \
 	fv-special-color-vertex.glsl \
 	fv-special-texture-vertex.glsl \
-	fv-texture-fragment.glsl \
+	fv-hud-fragment.glsl \
 	fv-map-vertex.glsl \
 	fv-person-fragment.glsl \
 	fv-person-vertex.glsl \

@@ -37,6 +37,17 @@
 
 #define FV_MAP_PAINTER_N_MODELS FV_N_ELEMENTS(fv_map_painter_models)
 
+/* The normals for the map are only ever one of the the following
+ * directions so instead of encoding each component of the normal in
+ * the vertex we just encode a byte with one of the following values
+ * and let the vertex shader expand it out.
+ */
+#define FV_MAP_PAINTER_NORMAL_UP 0
+#define FV_MAP_PAINTER_NORMAL_NORTH 25
+#define FV_MAP_PAINTER_NORMAL_EAST 100
+#define FV_MAP_PAINTER_NORMAL_SOUTH -25
+#define FV_MAP_PAINTER_NORMAL_WEST -100
+
 struct fv_map_painter_model {
         const char *filename;
         enum fv_image_data_image texture;
@@ -92,6 +103,7 @@ struct fv_map_painter {
 
 struct vertex {
         uint8_t x, y, z;
+        int8_t normal;
         uint16_t s, t;
 };
 
@@ -235,6 +247,16 @@ set_tex_coords_for_image(struct fv_map_painter *painter,
 }
 
 static void
+set_normals(struct vertex *v,
+            int8_t value)
+{
+        int i;
+
+        for (i = 0; i < 4; i++)
+                v[i].normal = value;
+}
+
+static void
 generate_square(struct fv_map_painter *painter,
                 struct tile_data *data,
                 int x, int y)
@@ -253,6 +275,7 @@ generate_square(struct fv_map_painter *painter,
                                  v,
                                  FV_MAP_GET_BLOCK_TOP_IMAGE(block),
                                  1.0f);
+        set_normals(v, FV_MAP_PAINTER_NORMAL_UP);
 
         for (i = 0; i < 4; i++)
                 v[i].z = z;
@@ -272,6 +295,7 @@ generate_square(struct fv_map_painter *painter,
         /* Add the side walls */
         if (z > (oz = get_position_height(painter, x, y + 1))) {
                 v = add_horizontal_side(data, y + 1, x + 1, oz, x, z);
+                set_normals(v, FV_MAP_PAINTER_NORMAL_NORTH);
                 set_tex_coords_for_image(painter,
                                          data,
                                          v,
@@ -280,6 +304,7 @@ generate_square(struct fv_map_painter *painter,
         }
         if (z > (oz = get_position_height(painter, x, y - 1))) {
                 v = add_horizontal_side(data, y, x, oz, x + 1, z);
+                set_normals(v, FV_MAP_PAINTER_NORMAL_SOUTH);
                 set_tex_coords_for_image(painter,
                                          data,
                                          v,
@@ -288,6 +313,7 @@ generate_square(struct fv_map_painter *painter,
         }
         if (z > (oz = get_position_height(painter, x - 1, y))) {
                 v = add_vertical_side(data, x, y + 1, oz, y, z);
+                set_normals(v, FV_MAP_PAINTER_NORMAL_WEST);
                 set_tex_coords_for_image(painter,
                                          data,
                                          v,
@@ -296,6 +322,7 @@ generate_square(struct fv_map_painter *painter,
         }
         if (z > (oz = get_position_height(painter, x + 1, y))) {
                 v = add_vertical_side(data, x + 1, y, oz, y + 1, z);
+                set_normals(v, FV_MAP_PAINTER_NORMAL_EAST);
                 set_tex_coords_for_image(painter,
                                          data,
                                          v,
@@ -440,6 +467,9 @@ init_programs(struct fv_map_painter *painter,
         painter->map_program.modelview_transform =
                 fv_gl.glGetUniformLocation(painter->map_program.id,
                                            "transform");
+        painter->map_program.normal_transform =
+                fv_gl.glGetUniformLocation(painter->map_program.id,
+                                           "normal_transform");
         painter->color_program.id =
                 shader_data->programs[FV_SHADER_DATA_PROGRAM_SPECIAL_COLOR];
         painter->texture_program.id =
@@ -607,6 +637,16 @@ fv_map_painter_new(const struct fv_map *map,
                                       0, /* divisor */
                                       painter->vertices_buffer,
                                       offsetof(struct vertex, s));
+
+        fv_array_object_set_attribute(painter->array,
+                                      FV_SHADER_DATA_ATTRIB_NORMAL,
+                                      1, /* size */
+                                      GL_BYTE,
+                                      GL_FALSE, /* normalized */
+                                      sizeof (struct vertex),
+                                      0, /* divisor */
+                                      painter->vertices_buffer,
+                                      offsetof(struct vertex, normal));
 
         fv_gl.glGenBuffers(1, &painter->indices_buffer);
         fv_array_object_set_element_buffer(painter->array,
@@ -787,12 +827,17 @@ fv_map_painter_paint(struct fv_map_painter *painter,
         flush_specials(painter);
 
         fv_transform_ensure_mvp(&paint_state->transform);
+        fv_transform_ensure_normal_transform(&paint_state->transform);
 
         fv_gl.glUseProgram(painter->map_program.id);
         fv_gl.glUniformMatrix4fv(painter->map_program.modelview_transform,
                                  1, /* count */
                                  GL_FALSE, /* transpose */
                                  &paint_state->transform.mvp.xx);
+        fv_gl.glUniformMatrix3fv(painter->map_program.normal_transform,
+                                 1, /* count */
+                                 GL_FALSE, /* transpose */
+                                 paint_state->transform.normal_transform);
 
         fv_gl.glBindTexture(GL_TEXTURE_2D, painter->texture);
 
