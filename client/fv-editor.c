@@ -950,7 +950,7 @@ paint(struct data *data)
                             -paint_state.center_y,
                             0.0f);
 
-        fv_transform_update_derived_values(&paint_state.transform);
+        fv_transform_dirty(&paint_state.transform);
 
         fv_map_painter_paint(data->map_painter,
                              &paint_state);

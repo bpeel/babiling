@@ -201,6 +201,8 @@ update_projection(struct fv_game *game,
                                   FV_GAME_NEAR_PLANE,
                                   FV_GAME_FAR_PLANE);
 
+                fv_transform_dirty(transform);
+
                 update_base_inverse(game);
                 update_visible_area(game);
 
@@ -219,6 +221,8 @@ update_modelview(struct fv_game *game,
                             -game->paint_state.center_x,
                             -game->paint_state.center_y,
                             0.0f);
+
+        fv_transform_dirty(&game->paint_state.transform);
 }
 
 void
@@ -292,8 +296,6 @@ fv_game_paint(struct fv_game *game,
         update_projection(game, width, height);
 
         update_modelview(game, logic);
-
-        fv_transform_update_derived_values(&game->paint_state.transform);
 
         fv_person_painter_paint(game->person_painter,
                                 logic,
