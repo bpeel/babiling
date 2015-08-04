@@ -17,8 +17,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* This is the vector [-1, 2, -3] rotated by -30° along the x axis and
- * then normalised. This was calculated with this snippet of python:
+/* This is the vector [-1, 2, -3] rotated by -30 degrees along the x
+ * axis and then normalised. This was calculated with this snippet of
+ * python:
  * import numpy
  * import math
  * angle = -30.0 * math.pi / 180.0
