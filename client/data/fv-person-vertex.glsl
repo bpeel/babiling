@@ -34,10 +34,6 @@ varying vec2 tex_coord;
 
 varying float tint;
 
-float
-get_lighting_tint(mat3 normal_transform,
-                  vec3 normal);
-
 void
 main()
 {
