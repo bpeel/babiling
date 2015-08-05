@@ -120,10 +120,16 @@ def generate_tile(image, tx, ty):
     # combine multiple copies of a model into a single draw call
     specials.sort(key = lambda x: x[3])
 
-    for special in specials:
-        print("                        { ",
-              ", ".join(map(str, special)),
-              " },\n")
+    if len(specials) == 0:
+        print("                NULL,")
+    else:
+        print("                (const struct fv_map_special[])\n"
+              "                {\n")
+        for special in specials:
+            print("                        { ",
+                  ", ".join(map(str, special)),
+                  " },\n")
+        print("                },")
 
     return len(specials)
 
@@ -136,6 +142,7 @@ if image.size != (MAP_WIDTH * IMAGE_BLOCK_SIZE, MAP_HEIGHT * IMAGE_BLOCK_SIZE):
 print('''
 /* Automatically generated from make-map.py, do not edit */
 #include "config.h"
+#include <stdlib.h>
 #include "fv-map.h"
 #define F FV_MAP_FULL_WALL
 #define H FV_MAP_HALF_WALL
@@ -193,13 +200,9 @@ print('''
 
 for y in range(MAP_TILES_Y - 1, -1, -1):
     for x in range(0, MAP_TILES_X):
-        print("        {\n"
-              "                {\n")
-
+        print("        {\n")
         count = generate_tile(image, x, y)
-
-        print("                },\n" +
-              "                " + str(count) + "\n" +
+        print("                " + str(count) + "\n" +
               "        },\n")
 
 print('''

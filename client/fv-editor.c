@@ -34,6 +34,7 @@
 #include "fv-map-painter.h"
 #include "fv-array-object.h"
 #include "fv-data.h"
+#include "fv-buffer.h"
 
 #define MIN_GL_MAJOR_VERSION 3
 #define MIN_GL_MINOR_VERSION 3
@@ -122,6 +123,7 @@ struct data {
         } graphics;
 
         struct fv_map map;
+        struct fv_buffer special_buffer[FV_MAP_TILES_X * FV_MAP_TILES_Y];
 
         SDL_Window *window;
         SDL_GLContext gl_context;
@@ -198,13 +200,14 @@ get_special(struct data *data,
         int ty = y / FV_MAP_TILE_HEIGHT;
         struct fv_map_tile *tile =
                 data->map.tiles + tx + ty * FV_MAP_TILES_X;
-        struct fv_map_special *special;
+        struct fv_map_special *specials =
+                (struct fv_map_special *)
+                data->special_buffer[tx + ty * FV_MAP_TILES_X].data;
         int i;
 
         for (i = 0; i < tile->n_specials; i++) {
-                special = tile->specials + i;
-                if (special->x == x && special->y == y)
-                        return special;
+                if (specials[i].x == x && specials[i].y == y)
+                        return specials + i;
         }
 
         return NULL;
@@ -216,6 +219,7 @@ set_special(struct data *data,
             int special_num)
 {
         struct fv_map_special *special = get_special(data, x, y);
+        struct fv_buffer *special_buffer;
         struct fv_map_tile *tile;
         int tx, ty;
 
@@ -226,15 +230,23 @@ set_special(struct data *data,
 
         tx = x / FV_MAP_TILE_WIDTH;
         ty = y / FV_MAP_TILE_HEIGHT;
-        tile = data->map.tiles + tx + ty * FV_MAP_TILES_X;
 
-        if (tile->n_specials < FV_MAP_MAX_SPECIALS) {
-                special = tile->specials + tile->n_specials++;
-                special->num = special_num;
-                special->x = x;
-                special->y = y;
-                special->rotation = 0;
-        }
+        tile = data->map.tiles + tx + ty * FV_MAP_TILES_X;
+        special_buffer = data->special_buffer + tx + ty * FV_MAP_TILES_X;
+
+        fv_buffer_set_length(special_buffer,
+                             (tile->n_specials + 1) *
+                             sizeof (struct fv_map_special));
+
+        tile->specials = (struct fv_map_special *) special_buffer->data;
+
+        special = ((struct fv_map_special *) special_buffer->data +
+                   tile->n_specials);
+        special->num = special_num;
+        special->x = x;
+        special->y = y;
+        special->rotation = 0;
+        tile->n_specials++;
 }
 
 static void
@@ -1127,6 +1139,7 @@ main(int argc, char **argv)
         struct data data;
         int res;
         int ret = EXIT_SUCCESS;
+        int i;
 
         memset(&data.graphics, 0, sizeof data.graphics);
         data.map = fv_map;
@@ -1134,6 +1147,14 @@ main(int argc, char **argv)
         data.y_pos = FV_MAP_HEIGHT / 2;
         data.distance = FV_EDITOR_MIN_DISTANCE;
         data.rotation = 0;
+
+        for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++) {
+                fv_buffer_init(data.special_buffer + i);
+                fv_buffer_append(data.special_buffer + i,
+                                 fv_map.tiles[i].specials,
+                                 fv_map.tiles[i].n_specials *
+                                 sizeof (struct fv_map_special));
+        }
 
         data.clipboard.block = 0;
         data.clipboard.special_num = -1;
@@ -1227,6 +1248,8 @@ out_window:
         SDL_DestroyWindow(data.window);
 out_sdl:
         SDL_Quit();
+        for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++)
+                fv_buffer_destroy(data.special_buffer + i);
 out:
         return ret;
 }
