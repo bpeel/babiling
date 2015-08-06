@@ -52,6 +52,8 @@
 #define FV_EDITOR_MIN_DISTANCE 14.286f
 #define FV_EDITOR_MAX_DISTANCE 42.857f
 
+#define FV_EDITOR_N_SPECIALS 4
+
 static const char
 highlight_vertex_shader[] =
         "#version 330\n"
@@ -99,16 +101,6 @@ side_map[] = {
         { 0x99, 0xcc, 0xcc, 9 }, /* inner wall */
         { 0x55, 0x66, 0xcc, 12 }, /* welcome poster 1 */
         { 0x55, 0x66, 0xdd, 14 }, /* welcome poster 2 */
-        { -1 }
-};
-
-static const struct color_map
-special_map[] = {
-        { 0xdd, 0x55, 0x33, 0 }, /* table */
-        { 0x00, 0x00, 0xee, 1 }, /* chair */
-        { 0xbb, 0x33, 0xbb, 2 }, /* barrel */
-        { 0xbb, 0xaa, 0xaa, 3 }, /* bar */
-        { 0x00, 0x00, 0x00, -1 }, /* covered by a neighbouring special */
         { -1 }
 };
 
@@ -389,18 +381,12 @@ next_special(struct data *data)
 {
         struct fv_map_special *special =
                 get_special(data, data->x_pos, data->y_pos);
-        const struct color_map *color;
         int special_num;
 
-        if (special == NULL) {
+        if (special == NULL)
                 special_num = 0;
-        } else {
-                color = lookup_color(special_map, special->num) + 1;
-                if (color->r == -1 || color->value == -1)
-                        special_num = 0;
-                else
-                        special_num = color->value;
-        }
+        else
+                special_num = (special->num + 1) % FV_EDITOR_N_SPECIALS;
 
         set_special(data, data->x_pos, data->y_pos, special_num);
 
@@ -502,11 +488,10 @@ set_pixel(uint8_t *buf,
 }
 
 static void
-set_special_colors(uint8_t *buf,
-                   int x, int y,
-                   const struct color_map *color)
+set_corners(uint8_t *buf,
+            int x, int y,
+            const struct color_map *color)
 {
-        set_pixel(buf, x, y, 2, 1, color);
         set_pixel(buf, x, y, 0, 0, color);
         set_pixel(buf, x, y, 3, 0, color);
         set_pixel(buf, x, y, 0, 3, color);
@@ -533,8 +518,8 @@ save_block(uint8_t *buf,
         type = FV_MAP_GET_BLOCK_TYPE(block);
 
         if (type == FV_MAP_BLOCK_TYPE_SPECIAL) {
-                color = lookup_color(special_map, -1);
-                set_special_colors(buf, x, y, color);
+                set_pixel(buf, x, y, 1, 2, side_map);
+                set_corners(buf, x, y, side_map);
         } else if (type != FV_MAP_BLOCK_TYPE_FLOOR) {
                 color = lookup_color(side_map,
                                      FV_MAP_GET_BLOCK_NORTH_IMAGE(block));
@@ -561,29 +546,29 @@ save_block(uint8_t *buf,
 static void
 save_special(struct data *data,
              uint8_t *buf,
+             uint8_t *p,
              const struct fv_map_special *special)
 {
-        const struct color_map *color;
-        struct color_map rotation_color;
+        set_corners(buf, special->x, special->y, side_map + 1);
 
-        color = lookup_color(special_map, special->num);
-        set_special_colors(buf, special->x, special->y, color);
-
-        if (special->rotation) {
-                rotation_color.r = special->rotation >> 8;
-                rotation_color.g = special->rotation & 0xff;
-                rotation_color.b = 0;
-                set_pixel(buf, special->x, special->y, 2, 2, &rotation_color);
-        }
+        p[0] = special->x;
+        p[1] = special->y;
+        p[3] = special->num;
+        p[4] = special->rotation >> 8;
+        p[5] = special->rotation & 0xff;
 }
 
 static void
 save(struct data *data)
 {
-        uint8_t *buf;
+        uint8_t *buf, *p;
         char *filename;
         FILE *out;
         int y, x, i, j;
+        int specials_start;
+        int special_lines;
+        int n_specials = 0;
+        int img_width, img_height;
 
         filename = fv_data_get_filename("../fv-map.ppm");
 
@@ -592,7 +577,23 @@ save(struct data *data)
                 return;
         }
 
-        buf = fv_alloc(FV_MAP_WIDTH * FV_MAP_HEIGHT * 4 * 4 * 3);
+        for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++)
+                n_specials += data->map.tiles[i].n_specials;
+
+        img_width = FV_MAP_WIDTH * 4;
+
+        specials_start = FV_MAP_HEIGHT * 4 + 4;
+        special_lines = (n_specials + img_width / 2 - 1) / (img_width / 2);
+
+        img_height = specials_start + special_lines;
+
+        buf = fv_alloc(img_width * img_height * 3);
+
+        /* Initialise the specials area to white */
+        memset(buf + img_width * 3 * FV_MAP_HEIGHT * 4,
+               0xff,
+               (specials_start - FV_MAP_HEIGHT * 4 + special_lines) *
+               img_width * 3);
 
         for (y = 0; y < FV_MAP_HEIGHT; y++) {
                 for (x = 0; x < FV_MAP_WIDTH; x++) {
@@ -602,11 +603,14 @@ save(struct data *data)
                 }
         }
 
+        p = buf + specials_start * img_width * 3;
+
         for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++) {
                 for (j = 0; j < data->map.tiles[i].n_specials; j++) {
                         save_special(data,
-                                     buf,
+                                     buf, p,
                                      data->map.tiles[i].specials + j);
+                        p += 3 * 2;
                 }
         }
 
@@ -621,10 +625,10 @@ save(struct data *data)
                         "P6\n"
                         "%i %i\n"
                         "255\n",
-                        FV_MAP_WIDTH * 4,
-                        FV_MAP_HEIGHT * 4);
+                        img_width,
+                        img_height);
 
-                fwrite(buf, FV_MAP_WIDTH * FV_MAP_HEIGHT * 4 * 4 * 3, 1, out);
+                fwrite(buf, img_width * img_height * 3, 1, out);
 
                 fclose(out);
         }
