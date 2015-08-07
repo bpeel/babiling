@@ -124,11 +124,12 @@ struct data {
         int y_pos;
         int distance;
         int rotation;
+        int current_special;
 
         struct {
                 fv_map_block_t block;
-                int special_num;
-                uint16_t special_rotation;
+                /* Array of fv_map_specials on this block */
+                struct fv_buffer specials;
         } clipboard;
 
         GLuint highlight_program;
@@ -184,9 +185,29 @@ redraw_map(struct data *data)
         queue_redraw(data);
 }
 
+static int
+count_specials(struct data *data,
+               int x, int y)
+{
+        int tx = x / FV_MAP_TILE_WIDTH;
+        int ty = y / FV_MAP_TILE_HEIGHT;
+        struct fv_map_tile *tile =
+                data->map.tiles + tx + ty * FV_MAP_TILES_X;
+        const struct fv_map_special *specials = tile->specials;
+        int count = 0;
+        int i;
+
+        for (i = 0; i < tile->n_specials; i++)
+                if (specials[i].x == x && specials[i].y == y)
+                        count++;
+
+        return count;
+}
+
 static struct fv_map_special *
 get_special(struct data *data,
-            int x, int y)
+            int x, int y,
+            int index)
 {
         int tx = x / FV_MAP_TILE_WIDTH;
         int ty = y / FV_MAP_TILE_HEIGHT;
@@ -195,36 +216,32 @@ get_special(struct data *data,
         struct fv_map_special *specials =
                 (struct fv_map_special *)
                 data->special_buffer[tx + ty * FV_MAP_TILES_X].data;
+        int count = 0;
         int i;
 
         for (i = 0; i < tile->n_specials; i++) {
-                if (specials[i].x == x && specials[i].y == y)
-                        return specials + i;
+                if (specials[i].x == x && specials[i].y == y) {
+                        if (count == index)
+                                return specials + i;
+                        count++;
+                }
         }
 
         return NULL;
 }
 
-static void
-set_special(struct data *data,
+static struct fv_map_special *
+add_special(struct data *data,
             int x, int y,
             int special_num)
 {
-        struct fv_map_special *special = get_special(data, x, y);
-        struct fv_buffer *special_buffer;
-        struct fv_map_tile *tile;
-        int tx, ty;
-
-        if (special) {
-                special->num = special_num;
-                return;
-        }
-
-        tx = x / FV_MAP_TILE_WIDTH;
-        ty = y / FV_MAP_TILE_HEIGHT;
-
-        tile = data->map.tiles + tx + ty * FV_MAP_TILES_X;
-        special_buffer = data->special_buffer + tx + ty * FV_MAP_TILES_X;
+        int tx = x / FV_MAP_TILE_WIDTH;
+        int ty = y / FV_MAP_TILE_HEIGHT;
+        struct fv_map_tile *tile =
+                data->map.tiles + tx + ty * FV_MAP_TILES_X;
+        struct fv_buffer *special_buffer =
+                data->special_buffer + tx + ty * FV_MAP_TILES_X;
+        struct fv_map_special *special;
 
         fv_buffer_set_length(special_buffer,
                              (tile->n_specials + 1) *
@@ -238,7 +255,32 @@ set_special(struct data *data,
         special->x = x;
         special->y = y;
         special->rotation = 0;
+
         tile->n_specials++;
+
+        return special;
+}
+
+static void
+add_special_at_cursor(struct data *data)
+{
+        add_special(data, data->x_pos, data->y_pos, 0);
+        data->current_special =
+                count_specials(data, data->x_pos, data->y_pos) - 1;
+        redraw_map(data);
+}
+
+static void
+next_special_index(struct data *data)
+{
+        struct fv_map_special *special;
+
+        data->current_special++;
+        special = get_special(data,
+                              data->x_pos, data->y_pos,
+                              data->current_special);
+        if (special == 0)
+                data->current_special = 0;
 }
 
 static void
@@ -279,6 +321,8 @@ update_position(struct data *data,
                 data->y_pos = 0;
         else if (data->y_pos >= FV_MAP_HEIGHT)
                 data->y_pos = FV_MAP_HEIGHT - 1;
+
+        data->current_special = 0;
 
         queue_redraw(data);
 }
@@ -380,24 +424,25 @@ static void
 next_special(struct data *data)
 {
         struct fv_map_special *special =
-                get_special(data, data->x_pos, data->y_pos);
-        int special_num;
+                get_special(data,
+                            data->x_pos, data->y_pos,
+                            data->current_special);
 
         if (special == NULL)
-                special_num = 0;
-        else
-                special_num = (special->num + 1) % FV_EDITOR_N_SPECIALS;
+                return;
 
-        set_special(data, data->x_pos, data->y_pos, special_num);
+        special->num = (special->num + 1) % FV_EDITOR_N_SPECIALS;
 
         redraw_map(data);
 }
 
 static void
 remove_special(struct data *data,
-               int x, int y)
+               int x, int y,
+               int index)
 {
-        struct fv_map_special *special = get_special(data, x, y);
+        struct fv_map_special *special =
+                get_special(data, x, y, index);
         struct fv_map_tile *tile;
         int tx, ty;
 
@@ -415,7 +460,8 @@ remove_special(struct data *data,
 static void
 remove_special_at_cursor(struct data *data)
 {
-        remove_special(data, data->x_pos, data->y_pos);
+        remove_special(data, data->x_pos, data->y_pos, data->current_special);
+        data->current_special = MAX(data->current_special - 1, 0);
         redraw_map(data);
 }
 
@@ -424,7 +470,9 @@ rotate_special(struct data *data,
                int amount)
 {
         struct fv_map_special *special =
-                get_special(data, data->x_pos, data->y_pos);
+                get_special(data,
+                            data->x_pos, data->y_pos,
+                            data->current_special);
 
         if (special == NULL)
                 return;
@@ -438,38 +486,49 @@ static void
 copy(struct data *data)
 {
         struct fv_map_special *special;
+        int i;
 
         data->clipboard.block =
                 data->map.blocks[data->x_pos + data->y_pos * FV_MAP_WIDTH];
 
-        special = get_special(data, data->x_pos, data->y_pos);
+        fv_buffer_set_length(&data->clipboard.specials, 0);
 
-        if (special) {
-                data->clipboard.special_num = special->num;
-                data->clipboard.special_rotation = special->rotation;
-        } else {
-                data->clipboard.special_num = -1;
+        for (i = 0;
+             (special = get_special(data, data->x_pos, data->y_pos, i)) != NULL;
+             i++) {
+                fv_buffer_append(&data->clipboard.specials,
+                                 special,
+                                 sizeof *special);
         }
 }
 
 static void
 paste(struct data *data)
 {
-        struct fv_map_special *special;
+        struct fv_map_special *new_special, *old_special;
+        int n_specials;
+        int i;
 
         data->map.blocks[data->x_pos + data->y_pos * FV_MAP_WIDTH] =
                 data->clipboard.block;
 
-        if (data->clipboard.special_num == -1) {
-                remove_special(data, data->x_pos, data->y_pos);
-        } else {
-                set_special(data,
-                            data->x_pos, data->y_pos,
-                            data->clipboard.special_num);
-                special = get_special(data, data->x_pos, data->y_pos);
-                if (special)
-                        special->rotation = data->clipboard.special_rotation;
+        /* Remove all the current specials */
+        n_specials = count_specials(data, data->x_pos, data->y_pos);
+        for (i = 0; i < n_specials; i++)
+                remove_special(data, data->x_pos, data->y_pos, 0);
+
+        /* Add back all the ones from the clipboard */
+        n_specials = data->clipboard.specials.length / sizeof *old_special;
+        for (i = 0; i < n_specials; i++) {
+                old_special = ((struct fv_map_special *)
+                               data->clipboard.specials.data + i);
+                new_special = add_special(data,
+                                          data->x_pos, data->y_pos,
+                                          old_special->num);
+                new_special->rotation = old_special->rotation;
         }
+
+        data->current_special = 0;
 
         redraw_map(data);
 }
@@ -708,6 +767,14 @@ handle_key_down(struct data *data,
 
         case SDLK_m:
                 next_special(data);
+                break;
+
+        case SDLK_b:
+                add_special_at_cursor(data);
+                break;
+
+        case SDLK_TAB:
+                next_special_index(data);
                 break;
 
         case SDLK_c:
@@ -1151,6 +1218,7 @@ main(int argc, char **argv)
         data.y_pos = FV_MAP_HEIGHT / 2;
         data.distance = FV_EDITOR_MIN_DISTANCE;
         data.rotation = 0;
+        data.current_special = 0;
 
         for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++) {
                 fv_buffer_init(data.special_buffer + i);
@@ -1161,8 +1229,7 @@ main(int argc, char **argv)
         }
 
         data.clipboard.block = 0;
-        data.clipboard.special_num = -1;
-        data.clipboard.special_rotation = 0;
+        fv_buffer_init(&data.clipboard.specials);
 
         res = SDL_Init(SDL_INIT_VIDEO);
         if (res < 0) {
@@ -1254,6 +1321,7 @@ out_sdl:
         SDL_Quit();
         for (i = 0; i < FV_MAP_TILES_X * FV_MAP_TILES_Y; i++)
                 fv_buffer_destroy(data.special_buffer + i);
+        fv_buffer_destroy(&data.clipboard.specials);
 out:
         return ret;
 }
