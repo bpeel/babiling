@@ -53,8 +53,8 @@
 #define FV_EDITOR_MIN_DISTANCE 14.286f
 #define FV_EDITOR_MAX_DISTANCE 42.857f
 
-#define FV_EDITOR_N_SPECIALS 4
-#define FV_EDITOR_N_TEXTURES 1
+#define FV_EDITOR_N_SPECIALS 8
+#define FV_EDITOR_N_TEXTURES 14
 
 static const char
 highlight_vertex_shader[] =
@@ -111,7 +111,11 @@ default_textures[] = {
         FV_MAP_NO_TEXTURE,
         FV_MAP_NO_TEXTURE,
         FV_MAP_NO_TEXTURE,
-        0
+        0,
+        1,
+        3,
+        7,
+        13
 };
 
 struct data {

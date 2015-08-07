@@ -30,6 +30,10 @@ MODELS = \
 	chair.ply \
 	barrel.ply \
 	bar.ply \
+	flag-post-1-2-m.ply \
+	flag-post-2-3-m.ply \
+	flag-post-7-10-n.ply \
+	flag-post-3-5-m.ply \
 	$(NULL)
 
 # The order here must match the order for the image numbers used in
@@ -59,6 +63,19 @@ IMAGES = \
 	hud.png \
 	toiletguy.png \
 	bar-texture.png \
+	union-jack.png \
+	usa-flag.png \
+	spanish-flag.png \
+	italian-flag.png \
+	tricolour.png \
+	portuguese-flag.png \
+	brazilian-flag.png \
+	japanese-flag.png \
+	chinese-flag.png \
+	russian-flag.png \
+	dutch-flag.png \
+	south-korean-flag.png \
+	german-flag.png \
 	$(NULL)
 
 NON_IMAGES = \
@@ -89,6 +106,7 @@ EXTRA_DIST = \
 	$(MODELS:.ply=.blend) \
 	$(BLOCK_IMAGES) \
 	make-flag.py \
+	flag-notes.txt \
 	$(NULL)
 
 .svg.png :

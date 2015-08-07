@@ -1,0 +1,32 @@
+flag-post-7-10-n.ply
+====================
+
+brazilian-flag.png
+
+flag-post-2-3-m.ply
+===================
+
+chinese-flag.png
+dutch-flag.png
+
+italian-flag.png
+japanese-flag.png
+portuguese-flag.png
+russian-flag.png
+south-korean-flag.png
+spanish-flag.png
+tricolour.png
+
+flag-post-1-2-m.ply
+===================
+
+union-jack.png
+usa-flag.png
+
+(the USA flag is actually supposed to be 10:19 but it seems unlikely
+ anyone would notice at such a small size)
+
+flag-post-3-5-m.ply
+===================
+
+german-flag.png

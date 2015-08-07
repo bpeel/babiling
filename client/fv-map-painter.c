@@ -62,12 +62,29 @@ fv_map_painter_models[] = {
         { "table.ply", false },
         { "chair.ply", false },
         { "barrel.ply", false },
-        { "bar.ply", true }
+        { "bar.ply", true },
+        { "flag-post-1-2-m.ply", true },
+        { "flag-post-2-3-m.ply", true },
+        { "flag-post-7-10-n.ply", true },
+        { "flag-post-3-5-m.ply", true },
 };
 
 static enum fv_image_data_image
 fv_map_painter_textures[] = {
-        FV_IMAGE_DATA_BAR_TEXTURE
+        FV_IMAGE_DATA_BAR_TEXTURE,
+        FV_IMAGE_DATA_UNION_JACK,
+        FV_IMAGE_DATA_USA_FLAG,
+        FV_IMAGE_DATA_SPANISH_FLAG,
+        FV_IMAGE_DATA_ITALIAN_FLAG,
+        FV_IMAGE_DATA_TRICOLOUR,
+        FV_IMAGE_DATA_PORTUGUESE_FLAG,
+        FV_IMAGE_DATA_BRAZILIAN_FLAG,
+        FV_IMAGE_DATA_JAPANESE_FLAG,
+        FV_IMAGE_DATA_CHINESE_FLAG,
+        FV_IMAGE_DATA_RUSSIAN_FLAG,
+        FV_IMAGE_DATA_DUTCH_FLAG,
+        FV_IMAGE_DATA_SOUTH_KOREAN_FLAG,
+        FV_IMAGE_DATA_GERMAN_FLAG
 };
 
 struct fv_map_painter_program {
