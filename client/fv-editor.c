@@ -35,6 +35,7 @@
 #include "fv-array-object.h"
 #include "fv-data.h"
 #include "fv-buffer.h"
+#include "fv-map-buffer.h"
 
 #define MIN_GL_MAJOR_VERSION 3
 #define MIN_GL_MINOR_VERSION 3
@@ -144,6 +145,9 @@ struct data {
         GLuint highlight_buffer;
         struct fv_array_object *highlight_array_object;
         GLint highlight_transform_uniform;
+
+        struct fv_array_object *grid_array_object;
+        GLuint grid_buffer;
 
         bool quit;
 
@@ -1002,6 +1006,27 @@ draw_special_blocks(struct data *data,
 }
 
 static void
+draw_grid(struct data *data,
+          struct fv_paint_state *paint_state)
+{
+        fv_transform_ensure_mvp(&paint_state->transform);
+
+        fv_gl.glUseProgram(data->highlight_program);
+        fv_gl.glUniformMatrix4fv(data->highlight_transform_uniform,
+                                 1, /* count */
+                                 GL_FALSE, /* transpose */
+                                 &paint_state->transform.mvp.xx);
+
+        fv_array_object_bind(data->grid_array_object);
+
+        fv_gl.glEnable(GL_DEPTH_TEST);
+        fv_gl.glDrawArrays(GL_LINES,
+                           0, /* first */
+                           (FV_MAP_TILES_X - 1 + FV_MAP_TILES_Y - 1) * 2);
+        fv_gl.glDisable(GL_DEPTH_TEST);
+}
+
+static void
 paint(struct data *data)
 {
         struct fv_paint_state paint_state;
@@ -1059,6 +1084,8 @@ paint(struct data *data)
         fv_map_painter_paint(data->graphics.map_painter,
                              &paint_state);
 
+        draw_grid(data, &paint_state);
+
         draw_special_blocks(data, &paint_state);
         draw_cursor(data, &paint_state);
 
@@ -1077,6 +1104,88 @@ handle_redraw(struct data *data)
                 paint(data);
 
         data->redraw_queued = false;
+}
+
+static void
+make_grid_buffer(struct data *data)
+{
+        struct highlight_vertex *v;
+        const size_t buffer_size = (sizeof (struct highlight_vertex) *
+                                    2 * (FV_MAP_TILES_X - 1 +
+                                         FV_MAP_TILES_Y - 1));
+        int i;
+
+        fv_gl.glGenBuffers(1, &data->grid_buffer);
+        fv_gl.glBindBuffer(GL_ARRAY_BUFFER, data->grid_buffer);
+        fv_gl.glBufferData(GL_ARRAY_BUFFER,
+                           buffer_size,
+                           NULL, /* data */
+                           GL_STATIC_DRAW);
+
+        v = fv_map_buffer_map(GL_ARRAY_BUFFER,
+                              buffer_size,
+                              false, /* flush_explicit */
+                              GL_STATIC_DRAW);
+
+        for (i = 1; i < FV_MAP_TILES_X; i++) {
+                v->x = i * FV_MAP_TILE_WIDTH;
+                v->y = 0;
+                v->z = 0;
+                v->r = 1;
+                v->g = 0;
+                v->b = 0;
+                v->a = 1;
+                v++;
+                v->x = i * FV_MAP_TILE_WIDTH;
+                v->y = FV_MAP_HEIGHT;
+                v->z = 0;
+                v->r = 1;
+                v->g = 0;
+                v->b = 0;
+                v->a = 1;
+                v++;
+        }
+
+        for (i = 1; i < FV_MAP_TILES_Y; i++) {
+                v->x = 0;
+                v->y = i * FV_MAP_TILE_HEIGHT;
+                v->z = 0;
+                v->r = 1;
+                v->g = 0;
+                v->b = 0;
+                v->a = 1;
+                v++;
+                v->x = FV_MAP_WIDTH;
+                v->y = i * FV_MAP_TILE_HEIGHT;
+                v->z = 0;
+                v->r = 1;
+                v->g = 0;
+                v->b = 0;
+                v->a = 1;
+                v++;
+        }
+
+        fv_map_buffer_unmap();
+
+        data->grid_array_object = fv_array_object_new();
+        fv_array_object_set_attribute(data->grid_array_object,
+                                      0, /* index */
+                                      3, /* size */
+                                      GL_FLOAT,
+                                      GL_FALSE, /* normalized */
+                                      sizeof (struct highlight_vertex),
+                                      0, /* divisor */
+                                      data->grid_buffer,
+                                      offsetof(struct highlight_vertex, x));
+        fv_array_object_set_attribute(data->grid_array_object,
+                                      1, /* index */
+                                      4, /* size */
+                                      GL_FLOAT,
+                                      GL_FALSE, /* normalized */
+                                      sizeof (struct highlight_vertex),
+                                      0, /* divisor */
+                                      data->grid_buffer,
+                                      offsetof(struct highlight_vertex, r));
 }
 
 static bool
@@ -1318,6 +1427,7 @@ main(int argc, char **argv)
                 fv_gl.glGetUniformLocation(data.highlight_program, "transform");
 
         make_highlight_buffer(&data);
+        make_grid_buffer(&data);
 
         data.image_data_event = SDL_RegisterEvents(1);
 
@@ -1330,6 +1440,9 @@ main(int argc, char **argv)
         fv_gl.glDeleteProgram(data.highlight_program);
         fv_array_object_free(data.highlight_array_object);
         fv_gl.glDeleteBuffers(1, &data.highlight_buffer);
+
+        fv_array_object_free(data.grid_array_object);
+        fv_gl.glDeleteBuffers(1, &data.grid_buffer);
 
         destroy_graphics(&data);
 
