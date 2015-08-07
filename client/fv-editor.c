@@ -1225,6 +1225,9 @@ main(int argc, char **argv)
                                  fv_map.tiles[i].specials,
                                  fv_map.tiles[i].n_specials *
                                  sizeof (struct fv_map_special));
+                data.map.tiles[i].specials =
+                        (const struct fv_map_special *)
+                        data.special_buffer[i].data;
         }
 
         data.clipboard.block = 0;
