@@ -88,6 +88,7 @@ EXTRA_DIST = \
 	hud-stamp \
 	$(MODELS:.ply=.blend) \
 	$(BLOCK_IMAGES) \
+	make-flag.py \
 	$(NULL)
 
 .svg.png :
