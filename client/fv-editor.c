@@ -54,6 +54,7 @@
 #define FV_EDITOR_MAX_DISTANCE 42.857f
 
 #define FV_EDITOR_N_SPECIALS 4
+#define FV_EDITOR_N_TEXTURES 1
 
 static const char
 highlight_vertex_shader[] =
@@ -442,6 +443,23 @@ next_side(struct data *data,
 }
 
 static void
+next_texture(struct data *data)
+{
+        struct fv_map_special *special =
+                get_special(data,
+                            data->x_pos, data->y_pos,
+                            data->current_special);
+
+        if (special == NULL ||
+            special->texture == FV_MAP_NO_TEXTURE)
+                return;
+
+        special->texture = (special->texture + 1) % FV_EDITOR_N_TEXTURES;
+
+        queue_redraw(data);
+}
+
+static void
 next_special(struct data *data)
 {
         struct fv_map_special *special =
@@ -796,6 +814,10 @@ handle_key_down(struct data *data,
 
         case SDLK_b:
                 add_special_at_cursor(data);
+                break;
+
+        case SDLK_u:
+                next_texture(data);
                 break;
 
         case SDLK_TAB:
