@@ -60,8 +60,8 @@ IMAGE_BLOCK_SIZE = 4
 #
 # R1  - x position
 # G1  - y position
-# B1  - ignored
-# R2  - special number
+# B1  - special number
+# R2  - texture number
 # G2  - Most-significant byte of the rotation
 # B2  - Least-significant byte of the rotation
 #
@@ -93,6 +93,17 @@ def peek_color(image, bx, by, x, y):
 
     return ''.join(map(make_nibble, image.getpixel((x, y))[0:3]))
 
+def compare_special(special):
+    # First sort by whether the special has a texture or not because
+    # that requires switching program so we want to group those
+    # together as much as possible.
+    val = int(special[4] != 255) << 16
+    # Otherwise sort by the special index and texture number
+    val |= special[3] << 8
+    val |= special[4]
+
+    return val
+
 def generate_tiles(image):
     tiles = [[] for i in range(0, MAP_TILES_X * MAP_TILES_Y)]
 
@@ -103,20 +114,22 @@ def generate_tiles(image):
             if pos == (255, 255, 255):
                 continue
 
+            details = image.getpixel((x + 1, y))
+
             sx = pos[0]
             sy = pos[1]
+            special_index = pos[2]
+            texture = details[0]
+            rotation = (details[1] << 8) | details[2]
 
             tx = sx // MAP_TILE_WIDTH
             ty = sy // MAP_TILE_HEIGHT
             specials = tiles[tx + ty * MAP_TILES_X]
 
-            details = image.getpixel((x + 1, y))
-            special_index = details[0]
-            rotation = (details[1] << 8) | details[2]
-
             specials.append((sx, sy,
                              rotation,
-                             special_index))
+                             special_index,
+                             texture))
 
     for ty in range(0, MAP_TILES_Y):
         for tx in range(0, MAP_TILES_X):
@@ -125,7 +138,7 @@ def generate_tiles(image):
             specials = tiles[tx + ty * MAP_TILES_X]
             # Sort according to the model number so that the render can
             # combine multiple copies of a model into a single draw call
-            specials.sort(key = lambda x: x[3])
+            specials.sort(key = compare_special)
 
             if len(specials) == 0:
                 print("                NULL,")

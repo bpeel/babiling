@@ -104,6 +104,14 @@ side_map[] = {
         { -1 }
 };
 
+static int
+default_textures[] = {
+        FV_MAP_NO_TEXTURE,
+        FV_MAP_NO_TEXTURE,
+        FV_MAP_NO_TEXTURE,
+        0
+};
+
 struct data {
         struct fv_image_data *image_data;
         Uint32 image_data_event;
@@ -229,6 +237,15 @@ get_special(struct data *data,
         return NULL;
 }
 
+static void
+set_default_texture(struct fv_map_special *special)
+{
+        if (special->num < FV_N_ELEMENTS(default_textures))
+                special->texture = default_textures[special->num];
+        else
+                special->texture = FV_MAP_NO_TEXTURE;
+}
+
 static struct fv_map_special *
 add_special(struct data *data,
             int x, int y,
@@ -254,6 +271,7 @@ add_special(struct data *data,
         special->x = x;
         special->y = y;
         special->rotation = 0;
+        set_default_texture(special);
 
         tile->n_specials++;
 
@@ -432,6 +450,8 @@ next_special(struct data *data)
 
         special->num = (special->num + 1) % FV_EDITOR_N_SPECIALS;
 
+        set_default_texture(special);
+
         redraw_map(data);
 }
 
@@ -525,6 +545,7 @@ paste(struct data *data)
                                           data->x_pos, data->y_pos,
                                           old_special->num);
                 new_special->rotation = old_special->rotation;
+                new_special->texture = old_special->texture;
         }
 
         data->current_special = 0;
@@ -611,7 +632,8 @@ save_special(struct data *data,
 
         p[0] = special->x;
         p[1] = special->y;
-        p[3] = special->num;
+        p[2] = special->num;
+        p[3] = special->texture;
         p[4] = special->rotation >> 8;
         p[5] = special->rotation & 0xff;
 }

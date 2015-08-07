@@ -59,12 +59,14 @@ enum fv_map_block_type {
 #define FV_MAP_GET_BLOCK_WEST_IMAGE(x) (((x) >> 24) & ((1 << 6) - 1))
 #define FV_MAP_IS_WALL(x) (FV_MAP_GET_BLOCK_TYPE(x) != FV_MAP_BLOCK_TYPE_FLOOR)
 
+#define FV_MAP_NO_TEXTURE UINT8_MAX
+
 typedef uint32_t fv_map_block_t;
 
 struct fv_map_special {
         uint16_t x, y;
         uint16_t rotation;
-        uint16_t num;
+        uint8_t num, texture;
 };
 
 struct fv_map_tile {
