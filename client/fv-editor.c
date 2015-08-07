@@ -137,8 +137,6 @@ struct data {
         struct fv_array_object *highlight_array_object;
         GLint highlight_transform_uniform;
 
-        struct fv_map_painter *map_painter;
-
         bool quit;
 
         bool redraw_queued;
@@ -167,11 +165,12 @@ destroy_map_painter(struct data *data)
 static bool
 create_map_painter(struct data *data)
 {
-        data->map_painter = fv_map_painter_new(&data->map,
-                                               data->image_data,
-                                               &data->graphics.shader_data);
+        data->graphics.map_painter =
+                fv_map_painter_new(&data->map,
+                                   data->image_data,
+                                   &data->graphics.shader_data);
 
-        return data->map_painter != NULL;
+        return data->graphics.map_painter != NULL;
 }
 
 static void
@@ -1035,7 +1034,7 @@ paint(struct data *data)
 
         fv_transform_dirty(&paint_state.transform);
 
-        fv_map_painter_paint(data->map_painter,
+        fv_map_painter_paint(data->graphics.map_painter,
                              &paint_state);
 
         draw_special_blocks(data, &paint_state);
