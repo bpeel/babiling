@@ -46,7 +46,7 @@ fv_audio_device_get_data(struct fv_audio_device *dev,
         size_t length;
 
         if (dev->need_convert)
-                length = ceilf(n_samples * sizeof (int16_t) *
+                length = ceilf(n_samples * sizeof (int16_t) /
                                dev->audio_cvt.len_ratio);
         else
                 length = n_samples * sizeof (int16_t);
