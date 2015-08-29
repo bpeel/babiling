@@ -184,10 +184,18 @@ struct data {
 
         uint32_t key_state;
 
-        bool mouse_pressed;
-        bool mouse_pos_dirty;
-        int mouse_screen_x, mouse_screen_y;
-        float mouse_x, mouse_y;
+        enum {
+                CURSOR_STATE_NONE,
+                CURSOR_STATE_MOUSE,
+                CURSOR_STATE_TOUCH
+        } cursor_state;
+        union {
+                SDL_TouchID touch_device;
+                Uint32 mouse_device;
+        };
+        bool cursor_pos_dirty;
+        int cursor_screen_x, cursor_screen_y;
+        float cursor_x, cursor_y;
 
         bool redraw_queued;
 
@@ -286,32 +294,32 @@ check_joystick_axis_movement(struct data *data,
 }
 
 static bool
-check_mouse_movement(struct data *data,
-                     float *direction)
+check_cursor_movement(struct data *data,
+                      float *direction)
 {
         float player_x, player_y;
         float center_x, center_y;
         float dx, dy;
 
-        if (!data->mouse_pressed)
+        if (data->cursor_state == CURSOR_STATE_NONE)
                 return false;
 
-        if (data->mouse_pos_dirty) {
+        if (data->cursor_pos_dirty) {
                 fv_game_screen_to_world(data->graphics.game,
                                         data->last_fb_width,
                                         data->last_fb_height,
-                                        data->mouse_screen_x,
-                                        data->mouse_screen_y,
-                                        &data->mouse_x,
-                                        &data->mouse_y);
-                data->mouse_pos_dirty = false;
+                                        data->cursor_screen_x,
+                                        data->cursor_screen_y,
+                                        &data->cursor_x,
+                                        &data->cursor_y);
+                data->cursor_pos_dirty = false;
         }
 
         fv_logic_get_center(data->logic, &center_x, &center_y);
         fv_logic_get_player_position(data->logic, &player_x, &player_y);
 
-        dx = data->mouse_x + center_x - player_x;
-        dy = data->mouse_y + center_y - player_y;
+        dx = data->cursor_x + center_x - player_x;
+        dy = data->cursor_y + center_y - player_y;
 
         if (dx * dx + dy * dy <= 0.1f * 0.1f)
                 return false;
@@ -380,10 +388,10 @@ update_direction(struct data *data)
         default:
                 /* If no buttons or keys are pressed then check if any
                  * movement is triggered by a joystick axis or the
-                 * mouse.
+                 * cursor.
                  */
                 if (!check_joystick_axis_movement(data, &direction, &speed) &&
-                    !check_mouse_movement(data, &direction)) {
+                    !check_cursor_movement(data, &direction)) {
                         speed = 0.0f;
                         direction = 0.0f;
                 }
@@ -599,6 +607,24 @@ handle_joystick_removed(struct data *data,
 }
 
 static void
+set_cursor_screen_pos(struct data *data,
+                      int x,
+                      int y)
+{
+        data->cursor_screen_x = x;
+        data->cursor_screen_y = y;
+        data->cursor_pos_dirty = true;
+        queue_redraw(data);
+}
+
+static void
+release_cursor(struct data *data)
+{
+        data->cursor_state = CURSOR_STATE_NONE;
+        update_direction(data);
+}
+
+static void
 handle_mouse_button(struct data *data,
                     const SDL_MouseButtonEvent *event)
 {
@@ -606,14 +632,18 @@ handle_mouse_button(struct data *data,
                 return;
 
         if (event->state == SDL_PRESSED) {
-                data->mouse_pressed = true;
-                data->mouse_screen_x = event->x;
-                data->mouse_screen_y = event->y;
-                data->mouse_pos_dirty = true;
-                queue_redraw(data);
+                if (data->cursor_state != CURSOR_STATE_NONE ||
+                    event->which == SDL_TOUCH_MOUSEID)
+                        return;
+
+                data->cursor_state = CURSOR_STATE_MOUSE;
+                data->mouse_device = event->which;
+                set_cursor_screen_pos(data, event->x, event->y);
         } else {
-                data->mouse_pressed = false;
-                update_direction(data);
+                if (data->mouse_device != event->which)
+                        return;
+
+                release_cursor(data);
         }
 }
 
@@ -621,13 +651,49 @@ static void
 handle_mouse_motion(struct data *data,
                     const SDL_MouseMotionEvent *event)
 {
-        if (!data->mouse_pressed)
+        if (data->cursor_state != CURSOR_STATE_MOUSE ||
+            event->which != data->mouse_device)
                 return;
 
-        data->mouse_screen_x = event->x;
-        data->mouse_screen_y = event->y;
-        data->mouse_pos_dirty = true;
-        queue_redraw(data);
+        set_cursor_screen_pos(data, event->x, event->y);
+}
+
+static void
+handle_finger_down(struct data *data,
+                   const SDL_TouchFingerEvent *event)
+{
+        if (data->cursor_state != CURSOR_STATE_NONE ||
+            event->fingerId != 0)
+                return;
+
+        data->cursor_state = CURSOR_STATE_TOUCH;
+        data->touch_device = event->touchId;
+
+        set_cursor_screen_pos(data, event->x, event->y);
+}
+
+static void
+handle_finger_up(struct data *data,
+                   const SDL_TouchFingerEvent *event)
+{
+        if (data->cursor_state != CURSOR_STATE_TOUCH ||
+            data->touch_device != event->touchId ||
+            event->fingerId != 0)
+                return;
+
+        release_cursor(data);
+}
+
+static void
+handle_finger_motion(struct data *data,
+                     const SDL_TouchFingerEvent *event)
+{
+        if (data->cursor_state != CURSOR_STATE_TOUCH ||
+            event->touchId != data->touch_device ||
+            event->fingerId != 0)
+                return;
+
+        set_cursor_screen_pos(data, event->x, event->y);
 }
 
 static void
@@ -739,6 +805,18 @@ handle_event(struct data *data,
 
         case SDL_MOUSEMOTION:
                 handle_mouse_motion(data, &event->motion);
+                goto handled;
+
+        case SDL_FINGERDOWN:
+                handle_finger_down(data, &event->tfinger);
+                goto handled;
+
+        case SDL_FINGERUP:
+                handle_finger_up(data, &event->tfinger);
+                goto handled;
+
+        case SDL_FINGERMOTION:
+                handle_finger_motion(data, &event->tfinger);
                 goto handled;
 
         case SDL_JOYBUTTONDOWN:
@@ -857,7 +935,7 @@ paint(struct data *data)
         /* The direction constantly changes when the mouse is pressed
          * so we need to recalculate every time.
          */
-        if (data->mouse_pressed)
+        if (data->cursor_state != CURSOR_STATE_NONE)
                 update_direction(data);
 
         now = SDL_GetTicks();
@@ -1289,7 +1367,7 @@ main(int argc, char **argv)
         }
 
         data.key_state = 0;
-        data.mouse_pressed = false;
+        data.cursor_state = CURSOR_STATE_NONE;
 
         data.redraw_queued = true;
 
