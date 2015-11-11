@@ -530,11 +530,32 @@ fv_network_new(void)
 }
 
 bool
+fv_network_add_listen_socket(struct fv_network *nw,
+                             int sock,
+                             struct fv_error **error)
+{
+        struct fv_network_listen_socket *listen_socket;
+
+        if (!fv_socket_set_nonblock(sock, error))
+                return false;
+
+        listen_socket = fv_alloc(sizeof *listen_socket);
+        listen_socket->sock = sock;
+        listen_socket->nw = nw;
+        fv_list_insert(&nw->listen_sockets, &listen_socket->link);
+
+        listen_socket->source = NULL;
+
+        update_listen_socket_source(nw, listen_socket);
+
+        return true;
+}
+
+bool
 fv_network_add_listen_address(struct fv_network *nw,
                               const char *address,
                               struct fv_error **error)
 {
-        struct fv_network_listen_socket *listen_socket;
         struct fv_netaddress netaddress;
         struct fv_netaddress_native native_address;
         const int true_value = true;
@@ -585,14 +606,8 @@ fv_network_add_listen_address(struct fv_network *nw,
                 goto error;
         }
 
-        listen_socket = fv_alloc(sizeof *listen_socket);
-        listen_socket->sock = sock;
-        listen_socket->nw = nw;
-        fv_list_insert(&nw->listen_sockets, &listen_socket->link);
-
-        listen_socket->source = NULL;
-
-        update_listen_socket_source(nw, listen_socket);
+        if (!fv_network_add_listen_socket(nw, sock, error))
+                goto error;
 
         return true;
 

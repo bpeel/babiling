@@ -46,6 +46,11 @@ fv_network_add_listen_address(struct fv_network *nw,
                               const char *address,
                               struct fv_error **error);
 
+bool
+fv_network_add_listen_socket(struct fv_network *nw,
+                             int sock,
+                             struct fv_error **error);
+
 void
 fv_network_free(struct fv_network *nw);
 
