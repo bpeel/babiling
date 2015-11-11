@@ -1,5 +1,5 @@
 /*
- * Regular Octagon
+ * Babiling
  *
  * Copyright (C) 2013, 2015 Neil Roberts
  *
