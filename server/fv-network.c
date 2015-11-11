@@ -56,7 +56,6 @@ struct fv_network_client {
 
 struct fv_network_listen_socket {
         struct fv_list link;
-        struct fv_netaddress address;
         int sock;
         struct fv_main_context_source *source;
         struct fv_network *nw;
@@ -590,8 +589,6 @@ fv_network_add_listen_address(struct fv_network *nw,
         listen_socket->sock = sock;
         listen_socket->nw = nw;
         fv_list_insert(&nw->listen_sockets, &listen_socket->link);
-
-        listen_socket->address = netaddress;
 
         listen_socket->source = NULL;
 
