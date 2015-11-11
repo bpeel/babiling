@@ -1,0 +1,14 @@
+[Unit]
+Description=Server for Babiling
+Requires=babiling.socket
+
+[Service]
+ExecStart=@bindir@/babiling-server \
+          -u nobody \
+          -g nogroup \
+          -l /var/log/babiling.log
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+Also=babiling.socket

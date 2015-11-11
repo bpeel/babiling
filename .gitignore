@@ -55,5 +55,6 @@
 /server/Makefile
 /server/Makefile.in
 /server/babiling-server
+/server/babiling.service
 *.o
 .deps

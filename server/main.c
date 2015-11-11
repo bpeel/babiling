@@ -36,6 +36,10 @@
 #include <sys/types.h>
 #include <signal.h>
 
+#ifdef USE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
+
 #include "fv-main-context.h"
 #include "fv-log.h"
 #include "fv-network.h"
@@ -329,11 +333,54 @@ add_listen_address_to_network(struct fv_network *nw,
         return res;
 }
 
+#ifdef USE_SYSTEMD
+
+static int
+add_systemd_sockets(struct fv_network *nw,
+                    struct fv_error **error)
+{
+        int nfds, i;
+
+        nfds = sd_listen_fds (true /* unset_environment */);
+
+        if (nfds < 0) {
+                fv_file_error_set(error,
+                                  -nfds,
+                                  "Error getting systemd fds: %s",
+                                  strerror (-nfds));
+                return -1;
+        } else if (nfds == 0) {
+                return 0;
+        }
+
+        for (i = 0; i < nfds; i++) {
+                if (!fv_network_add_listen_socket(nw,
+                                                  SD_LISTEN_FDS_START + i,
+                                                  error))
+                        return -1;
+        }
+
+        return nfds;
+}
+
+#endif /* USE_SYSTEMD */
+
 static bool
 add_addresses(struct fv_network *nw,
               struct fv_error **error)
 {
         struct address *address;
+
+#ifdef USE_SYSTEMD
+        {
+                int nfds = add_systemd_sockets(nw, error);
+
+                if (nfds == -1)
+                        return false;
+                else if (nfds > 0)
+                        return true;
+        }
+#endif /* USE_SYSTEMD */
 
         for (address = option_listen_addresses;
              address;

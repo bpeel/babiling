@@ -136,15 +136,27 @@ AS_COMPILER_FLAG([-std=c99],
 
 PKG_CHECK_MODULES([OPUS], [opus])
 
+AC_ARG_ENABLE([systemd],
+              [AC_HELP_STRING([--enable-systemd=@<:@no/yes@:>@],
+                              [Enable socket activation support via systemd @<:@default=yes@:>@])],
+              [],
+              [enable_systemd=yes])
+
 AS_IF([test "x$IS_EMSCRIPTEN" = "xyes"],
       [SDL_CFLAGS="-s USE_SDL=2"
-       AC_SUBST([SDL_CFLAGS])],
+       AC_SUBST([SDL_CFLAGS])
+       enable_systemd=no],
       [AS_CASE([$host_os],
                [mingw*],
                [GL_CFLAGS=""],
                [PKG_CHECK_MODULES([GL], [gl])])
        PKG_CHECK_MODULES([SDL], [sdl2])
        PKG_CHECK_MODULES([PULSE_SIMPLE], [libpulse-simple])])
+
+AS_IF([test "x$enable_systemd" = "xyes"],
+      [PKG_CHECK_MODULES(LIBSYSTEMD, [libsystemd])
+       AC_DEFINE(USE_SYSTEMD, 1, [Enable socket activation via systemd])])
+AM_CONDITIONAL(USE_SYSTEMD, [test "x$enable_systemd" = "xyes"])
 
 AC_SUBST(FINVENKISTO_EXTRA_CFLAGS)
 AC_SUBST(FINVENKISTO_EXTRA_LIBS)

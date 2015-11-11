@@ -9,6 +9,10 @@ AM_CFLAGS = \
 	-I$(srcdir)/../common \
 	$(NULL)
 
+if USE_SYSTEMD
+AM_CFLAGS += $(LIBSYSTEMD_CFLAGS)
+endif
+
 babiling_server_SOURCES = \
 	fv-base64.c \
 	fv-base64.h \
@@ -54,3 +58,19 @@ babiling_server_LDADD = \
 	$(OPUS_LIBS) \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)
+
+if USE_SYSTEMD
+babiling_server_LDADD += $(LIBSYSTEMD_LIBS)
+
+dist_systemd_DATA = \
+	$(builddir)/babiling.service \
+	$(srcdir)/babiling.socket
+
+systemddir = $(sysconfdir)/babiling/services
+endif
+
+%.service : %.service.in
+	$(AM_V_GEN)sed -e 's,@bindir\@,$(bindir),g' $< > $@
+
+EXTRA_DIST = \
+	babiling.service.in
