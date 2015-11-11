@@ -3,7 +3,7 @@ bin_PROGRAMS = \
 	$(NULL)
 
 AM_CFLAGS = \
-	$(FINVENKISTO_EXTRA_CFLAGS) \
+	$(BABILING_EXTRA_CFLAGS) \
 	$(SERVER_EXTRA_CFLAGS) \
 	$(OPUS_CFLAGS) \
 	-I$(srcdir)/../common \
@@ -53,7 +53,7 @@ babiling_server_LDFLAGS = \
 	$(NULL)
 
 babiling_server_LDADD = \
-	$(FINVENKISTO_EXTRA_LIBS) \
+	$(BABILING_EXTRA_LIBS) \
 	$(SERVER_EXTRA_LIBS) \
 	$(OPUS_LIBS) \
 	$(builddir)/../common/libcommon.a \

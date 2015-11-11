@@ -14,7 +14,7 @@ AM_CFLAGS = \
 	$(GL_CFLAGS) \
 	$(SDL_CFLAGS) \
 	$(OPUS_CFLAGS) \
-	$(FINVENKISTO_EXTRA_CFLAGS) \
+	$(BABILING_EXTRA_CFLAGS) \
 	-I$(srcdir)/../common \
 	$(NULL)
 
@@ -81,7 +81,7 @@ fv-map.c : fv-map.ppm make-map.py
 ldadd = \
 	$(SDL_LIBS) \
 	$(OPUS_LIBS) \
-	$(FINVENKISTO_EXTRA_LIBS) \
+	$(BABILING_EXTRA_LIBS) \
 	rply/librply.a \
 	$(builddir)/../common/libcommon.a \
 	$(NULL)
