@@ -116,16 +116,32 @@ fv_netaddress_to_string(const struct fv_netaddress *address)
                                    1 + /* null terminator */
                                    16 /* ... and one for the pot */);
         char *buf = fv_alloc(buffer_length);
+        static const uint8_t ipv4_mapped_address_prefix[] = {
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0xff, 0xff
+        };
         int len;
 
         if (address->family == AF_INET6) {
-                buf[0] = '[';
-                inet_ntop(AF_INET6,
-                          &address->ipv6,
-                          buf + 1,
-                          buffer_length - 1);
-                len = strlen(buf);
-                buf[len++] = ']';
+                if (memcmp(&address->ipv6,
+                           ipv4_mapped_address_prefix,
+                           sizeof ipv4_mapped_address_prefix)) {
+                        buf[0] = '[';
+                        inet_ntop(AF_INET6,
+                                  &address->ipv6,
+                                  buf + 1,
+                                  buffer_length - 1);
+                        len = strlen(buf);
+                        buf[len++] = ']';
+                } else {
+                        /* IPv6-mapped IPv4 address */
+                        inet_ntop(AF_INET,
+                                  (const uint8_t *) &address->ipv6 +
+                                  sizeof ipv4_mapped_address_prefix,
+                                  buf,
+                                  buffer_length);
+                        len = strlen(buf);
+                }
         } else {
                 inet_ntop(AF_INET,
                           &address->ipv4,
