@@ -20,6 +20,14 @@ AM_PROG_CC_C_O
 AC_ISC_POSIX
 AC_C_CONST
 
+std="x"
+for each in c99 c11 gnu11
+do
+   AS_COMPILER_FLAG([-std=$each], [std=$each])
+done
+AS_IF([test "$std" != "x"],
+      [CFLAGS="$CFLAGS -std=$std"])
+
 BABILING_EXTRA_CFLAGS=""
 BABILING_EXTRA_LIBS=""
 SERVER_EXTRA_CFLAGS=""
@@ -130,9 +138,6 @@ AS_CASE(
 
 # strip leading spaces
 BABILING_EXTRA_CFLAGS="$BABILING_EXTRA_CFLAGS ${MAINTAINER_CFLAGS#*  }"
-
-AS_COMPILER_FLAG([-std=c99],
-         [BABILING_EXTRA_CFLAGS="-std=c99 $BABILING_EXTRA_CFLAGS"])
 
 PKG_CHECK_MODULES([OPUS], [opus])
 
