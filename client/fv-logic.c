@@ -43,11 +43,18 @@
  * this diameter */
 #define FV_LOGIC_PERSON_SIZE 0.8f
 
+/* Acceleration in blocks per second² at which the player changes its
+ * speed to match the target speed specified by the controls. If the
+ * player needs to decelerate then it happens instantly.
+ */
+#define FV_LOGIC_ACCELERATION 20.0f
+
 struct fv_logic_position {
         float x, y;
         float current_direction;
         float target_direction;
-        float speed;
+        float current_speed;
+        float target_speed;
 };
 
 struct fv_logic_player {
@@ -83,7 +90,8 @@ fv_logic_new(void)
         player->position.y = FV_MAP_START_Y;
         player->position.current_direction = -M_PI / 2.0f;
         player->position.target_direction = 0.0f;
-        player->position.speed = 0.0f;
+        player->position.current_speed = 0.0f;
+        player->position.target_speed = 0.0f;
         player->type = fv_random_range(0, FV_PERSON_N_TYPES);
 
         player->center_x = player->position.x;
@@ -179,6 +187,7 @@ update_position_direction(struct fv_logic *logic,
 static bool
 update_position_xy(struct fv_logic *logic,
                    struct fv_logic_position *position,
+                   float speed,
                    float progress_secs)
 {
         bool ret = false;
@@ -186,7 +195,7 @@ update_position_xy(struct fv_logic *logic,
         float diff;
         float pos;
 
-        distance = position->speed * progress_secs;
+        distance = speed * progress_secs;
 
         diff = distance * cosf(position->target_direction);
 
@@ -223,7 +232,55 @@ update_position_xy(struct fv_logic *logic,
                 ret = true;
         }
 
+        /* If the player hits a wall then they will have to accelerate
+         * again to move away.
+         */
+        if (!ret)
+                position->current_speed = 0.0f;
+
         return ret;
+}
+
+/* Updates the current speed according to the target speed and the
+ * acceleration and returns the average speed that happened during
+ * that time.
+ */
+static float
+update_position_speed(struct fv_logic_position *position,
+                      float progress_secs)
+{
+        float target_difference =
+                position->target_speed - position->current_speed;
+        float time_difference;
+        float average_speed;
+        float acceleration_time;
+        float average_acceleration_speed;
+
+        /* Deceleration happens instantly */
+        if (target_difference <= 0.0f)
+                return position->current_speed = position->target_speed;
+
+        time_difference = FV_LOGIC_ACCELERATION * progress_secs;
+
+        if (time_difference < target_difference) {
+                average_speed = (position->current_speed +
+                                 time_difference / 2.0f);
+                position->current_speed += time_difference;
+                return average_speed;
+        }
+
+        acceleration_time = target_difference / FV_LOGIC_ACCELERATION;
+        average_acceleration_speed = (position->current_speed +
+                                      position->target_speed) / 2.0f;
+        average_speed = ((average_acceleration_speed *
+                          acceleration_time +
+                          position->target_speed *
+                          (progress_secs - acceleration_time)) /
+                         progress_secs);
+
+        position->current_speed = position->target_speed;
+
+        return average_speed;
 }
 
 static enum fv_logic_state_change
@@ -233,14 +290,21 @@ update_position(struct fv_logic *logic,
 {
         bool position_changed, direction_changed;
         enum fv_logic_state_change state_change = 0;
+        float average_speed;
 
-        if (position->speed == 0.0f)
+        if (position->target_speed == 0.0f &&
+            position->current_speed == 0.0f)
                 return 0;
 
         state_change |= FV_LOGIC_STATE_CHANGE_ALIVE;
 
+        average_speed = update_position_speed(position, progress_secs);
+
         position_changed =
-                update_position_xy(logic, position, progress_secs);
+                update_position_xy(logic,
+                                   position,
+                                   average_speed,
+                                   progress_secs);
         direction_changed =
                 update_position_direction(logic, position, progress_secs);
 
@@ -276,8 +340,9 @@ update_player_movement(struct fv_logic *logic,
 {
         struct fv_logic_player *player = &logic->player;
 
-        if (!player->position.speed)
-                return false;
+        if (player->position.target_speed == 0.0f &&
+            player->position.current_speed == 0.0f)
+                return 0;
 
         return (update_position(logic,
                                 &player->position,
@@ -319,10 +384,10 @@ fv_logic_set_direction(struct fv_logic *logic,
         struct fv_logic_player *player = &logic->player;
 
         if (speed > 0.0f) {
-                player->position.speed = speed;
+                player->position.target_speed = speed;
                 player->position.target_direction = direction;
         } else {
-                player->position.speed = 0.0f;
+                player->position.target_speed = 0.0f;
         }
 }
 
@@ -354,7 +419,8 @@ fv_logic_update_npc(struct fv_logic *logic,
         if (pos->current_direction > M_PI)
                 pos->current_direction -= 2 * M_PI;
         pos->target_direction = pos->current_direction;
-        pos->speed = 0.0f;
+        pos->target_speed = 0.0f;
+        pos->current_speed = 0.0f;
 
         npc->type = MIN(person->appearance.image, FV_PERSON_N_TYPES - 1);
 }
