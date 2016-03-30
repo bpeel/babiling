@@ -249,12 +249,26 @@ static float
 update_position_speed(struct fv_logic_position *position,
                       float progress_secs)
 {
-        float target_difference =
-                position->target_speed - position->current_speed;
+        float direction_difference;
+        float target_difference;
         float time_difference;
         float average_speed;
         float acceleration_time;
         float average_acceleration_speed;
+
+        /* If the target angle is more than 90.5° away from the
+         * current angle then the player can't move at all until they
+         * finish turning.
+         */
+        direction_difference = fabsf(position->target_direction -
+                                     position->current_direction);
+        if (direction_difference > M_PI)
+                direction_difference = 2.0f * M_PI - direction_difference;
+        if (direction_difference > 90.5f * M_PI / 180.0f)
+                return position->current_speed = 0.0f;
+
+        target_difference =
+                position->target_speed - position->current_speed;
 
         /* Deceleration happens instantly */
         if (target_difference <= 0.0f)
