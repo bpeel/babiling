@@ -47,6 +47,9 @@
 /client/data/hud-layout.h
 /client/data/hud/digits-stamp
 /client/data/hud-stamp
+/client/data/flag-stamp
+/client/data/flag-texture.png
+/client/data/flag-layout.h
 /common/Makefile
 /common/Makefile.in
 /common/libcommon.a

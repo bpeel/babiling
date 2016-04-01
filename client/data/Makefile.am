@@ -76,6 +76,7 @@ IMAGES = \
 	dutch-flag.png \
 	south-korean-flag.png \
 	german-flag.png \
+	flag-texture.png \
 	$(NULL)
 
 NON_IMAGES = \
@@ -98,11 +99,15 @@ EXTRA_DIST = \
 	fv-image-data-enum.h \
 	fv-image-data-files.h \
 	fv-image-data-stamp \
+	generate-flag-texture.py \
 	hud.png \
 	hud-layout.h \
 	make-atlas.py \
 	make-map-texture.py \
 	hud-stamp \
+	flag-stamp \
+	flag-layout.h \
+	flag-texture.png \
 	$(MODELS:.ply=.blend) \
 	$(BLOCK_IMAGES) \
 	make-flag.py \
@@ -121,6 +126,13 @@ hud-stamp : $(HUD_PNGS) make-atlas.py
 	$(AM_V_at)python3 $(srcdir)/make-atlas.py \
 	hud.png hud-layout.h $(filter %.png,$^)
 	$(AM_V_at)touch $@
+
+flag-texture.png flag-layout.h : flag-stamp
+
+flag-stamp : generate-flag-texture.py
+	$(AM_V_GEN)python3 $(srcdir)/generate-flag-texture.py \
+	$(srcdir)/flags && \
+	touch $@
 
 fv-image-data-stamp : $(IMAGES)
 	$(AM_V_GEN)for x in $(IMAGES); do \
@@ -141,6 +153,9 @@ DISTCLEANFILES = \
 	fv-image-data-stamp \
 	hud.png \
 	hud-stamp \
+	flag-texture.png \
+	flag-layout.h \
+	flag-stamp \
 	$(NULL)
 
 EXTRA_TARGETS = fv-image-data-stamp
