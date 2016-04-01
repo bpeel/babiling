@@ -107,6 +107,7 @@ EXTRA_DIST = \
 	$(BLOCK_IMAGES) \
 	make-flag.py \
 	flag-notes.txt \
+	get-flags.py \
 	$(NULL)
 
 .svg.png :
