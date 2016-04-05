@@ -238,7 +238,7 @@ handle_update_flags(struct fv_network *nw,
         player->n_flags = event->n_flags;
         memcpy(player->flags,
                event->flags,
-               sizeof (uint32_t) * event->n_flags);
+               sizeof (player->flags[0]) * event->n_flags);
 
         dirty_player(nw, player, FV_PLAYER_STATE_FLAGS);
 

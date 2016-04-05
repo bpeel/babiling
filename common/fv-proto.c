@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "fv-proto.h"
+#include "fv-flag.h"
 
 #define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)       \
         case enum_name:                                         \
@@ -49,6 +50,11 @@ get_payload_length(va_list ap)
                         va_arg(ap, const uint8_t *);
                         break;
 
+                case FV_PROTO_TYPE_FLAGS:
+                        payload_length += va_arg(ap, int) * sizeof (uint32_t);
+                        va_arg(ap, const enum fv_flag *);
+                        break;
+
                 case FV_PROTO_TYPE_NONE:
                         return payload_length;
                 }
@@ -56,6 +62,24 @@ get_payload_length(va_list ap)
 }
 
 #undef FV_PROTO_TYPE
+
+static void
+write_flags(uint8_t *buffer,
+            const enum fv_flag *flags,
+            int n_flags)
+{
+        int i;
+
+        if (FV_UINT32_TO_LE(UINT32_C(1)) != UINT32_C(1) ||
+            sizeof (enum fv_flag) != sizeof (uint32_t)) {
+                for (i = 0; i < n_flags; i++) {
+                        fv_proto_write_uint32_t(buffer, flags[i]);
+                        buffer += sizeof (uint32_t);
+                }
+        } else {
+                memcpy(buffer, flags, n_flags * sizeof (*flags));
+        }
+}
 
 #define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)               \
         case enum_name:                                                 \
@@ -77,6 +101,8 @@ fv_proto_write_command_v(uint8_t *buffer,
         size_t blob_length;
         const uint8_t *blob_data;
         va_list ap_copy;
+        const enum fv_flag *flags;
+        int n_flags;
 
         va_copy(ap_copy, ap);
         payload_length = get_payload_length(ap_copy);
@@ -119,6 +145,13 @@ fv_proto_write_command_v(uint8_t *buffer,
                         pos += blob_length;
                         break;
 
+                case FV_PROTO_TYPE_FLAGS:
+                        n_flags = va_arg(ap, int);
+                        flags = va_arg(ap, const enum fv_flag *);
+                        write_flags(buffer + pos, flags, n_flags);
+                        pos += n_flags * sizeof (uint32_t);
+                        break;
+
                 case FV_PROTO_TYPE_NONE:
                         goto done;
                 }
@@ -152,6 +185,24 @@ fv_proto_write_command(uint8_t *buffer,
         return ret;
 }
 
+static void
+read_flags(const uint8_t *buffer,
+           enum fv_flag *flags,
+           int n_flags)
+{
+        int i;
+
+        if (FV_UINT32_TO_LE(UINT32_C(1)) != UINT32_C(1) ||
+            sizeof (enum fv_flag) != sizeof (uint32_t)) {
+                for (i = 0; i < n_flags; i++) {
+                        *(flags++) = fv_proto_read_uint32_t(buffer);
+                        buffer += sizeof (uint32_t);
+                }
+        } else {
+                memcpy(flags, buffer, n_flags * sizeof (uint32_t));
+        }
+}
+
 #define FV_PROTO_TYPE(enum_name, type_name, ap_type_name)               \
         case enum_name:                                                 \
         if ((size_t) pos + sizeof (type_name) > length) {               \
@@ -178,6 +229,8 @@ fv_proto_read_payload(const uint8_t *buffer,
         va_list ap;
         const uint8_t **blob_data;
         size_t *blob_size;
+        enum fv_flag *flags;
+        int *n_flags;
 
         va_start(ap, length);
 
@@ -190,6 +243,26 @@ fv_proto_read_payload(const uint8_t *buffer,
                         blob_data = va_arg(ap, const uint8_t **);
                         *blob_size = length - pos;
                         *blob_data = buffer + pos;
+                        pos = length;
+                        break;
+
+                case FV_PROTO_TYPE_FLAGS:
+                        n_flags = va_arg(ap, int *);
+                        flags = va_arg(ap, enum fv_flag *);
+
+                        if ((length - pos) % (sizeof (uint32_t)) != 0) {
+                                ret = false;
+                                goto done;
+                        }
+
+                        *n_flags = (length - pos) / sizeof (uint32_t);
+
+                        if (*n_flags > FV_PROTO_MAX_FLAGS) {
+                                ret = false;
+                                goto done;
+                        }
+
+                        read_flags(buffer + pos, flags, *n_flags);
                         pos = length;
                         break;
 

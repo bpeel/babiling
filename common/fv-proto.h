@@ -83,6 +83,7 @@ enum fv_proto_type {
         FV_PROTO_TYPE_UINT32,
         FV_PROTO_TYPE_UINT64,
         FV_PROTO_TYPE_BLOB,
+        FV_PROTO_TYPE_FLAGS,
         FV_PROTO_TYPE_NONE
 };
 

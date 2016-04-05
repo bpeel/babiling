@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include "fv-proto.h"
+#include "fv-flag.h"
 
 /* Buffer enough speech data for 2 seconds */
 #define FV_PLAYER_MAX_PENDING_SPEECHES (2000 / FV_PROTO_SPEECH_TIME)
@@ -61,9 +62,9 @@ struct fv_player {
         /* FV_PLAYER_STATE_APPEARANCE */
         uint8_t image;
 
-        /* FV_PLAYER_STATE_LANGUAGES */
-        uint16_t n_flags;
-        uint32_t flags[FV_PROTO_MAX_FLAGS];
+        /* FV_PLAYER_STATE_FLAGS */
+        int n_flags;
+        enum fv_flag flags[FV_PROTO_MAX_FLAGS];
 
         /* The last time a connection that is using this player sent
          * some data. If this gets too old it will be a candidate for

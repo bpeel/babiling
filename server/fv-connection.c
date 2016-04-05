@@ -291,9 +291,8 @@ write_player_state(struct fv_connection *conn,
                                       FV_PROTO_TYPE_UINT16,
                                       (uint16_t) player_num,
 
-                                      FV_PROTO_TYPE_BLOB,
-                                      (size_t) (player->n_flags *
-                                                sizeof (uint32_t)),
+                                      FV_PROTO_TYPE_FLAGS,
+                                      player->n_flags,
                                       &player->flags,
 
                                       FV_PROTO_TYPE_NONE);
@@ -637,26 +636,20 @@ static bool
 handle_update_flags(struct fv_connection *conn)
 {
         struct fv_connection_update_flags_event event;
-        size_t blob_size;
-        const uint8_t *blob;
 
         if (!fv_proto_read_payload(conn->message_data + 1,
                                    conn->message_data_length - 1,
 
-                                   FV_PROTO_TYPE_BLOB,
-                                   &blob_size,
-                                   &blob,
+                                   FV_PROTO_TYPE_FLAGS,
+                                   &event.n_flags,
+                                   event.flags,
 
-                                   FV_PROTO_TYPE_NONE) ||
-            blob_size / sizeof (uint32_t) > FV_PROTO_MAX_FLAGS) {
+                                   FV_PROTO_TYPE_NONE)) {
                 fv_log("Invalid update flags command received from %s",
                        conn->remote_address_string);
                 set_error_state(conn);
                 return false;
         }
-
-        event.n_flags = blob_size / sizeof (uint32_t);
-        event.flags = (const uint32_t *) blob;
 
         return emit_event(conn,
                           FV_CONNECTION_EVENT_UPDATE_FLAGS,

@@ -35,6 +35,7 @@
 #include "fv-signal.h"
 #include "fv-proto.h"
 #include "fv-playerbase.h"
+#include "fv-flag.h"
 
 enum fv_connection_event_type {
         FV_CONNECTION_EVENT_ERROR,
@@ -75,8 +76,8 @@ struct fv_connection_update_appearance_event {
 struct fv_connection_update_flags_event {
         struct fv_connection_event base;
 
-        uint16_t n_flags;
-        const uint32_t *flags;
+        int n_flags;
+        enum fv_flag flags[FV_PROTO_MAX_FLAGS];
 };
 
 struct fv_connection_speech_event {
