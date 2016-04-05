@@ -57,6 +57,7 @@ sources = \
 	fv-network.h \
 	fv-network-common.h \
 	fv-paint-state.h \
+	fv-person.c \
 	fv-person.h \
 	fv-person-painter.c \
 	fv-person-painter.h \

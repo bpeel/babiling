@@ -42,9 +42,20 @@ struct fv_person_appearance {
         uint8_t image;
 };
 
+enum fv_person_state {
+        FV_PERSON_STATE_POSITION = (1 << 0),
+        FV_PERSON_STATE_APPEARANCE = (1 << 1),
+        FV_PERSON_STATE_ALL = (1 << 2) - 1,
+};
+
 struct fv_person {
         struct fv_person_position pos;
         struct fv_person_appearance appearance;
 };
+
+void
+fv_person_copy_state(struct fv_person *dst,
+                     const struct fv_person *src,
+                     enum fv_person_state state);
 
 #endif /* FV_PERSON_H */
