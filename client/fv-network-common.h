@@ -27,8 +27,7 @@ struct fv_network_base {
         bool has_player_id;
         uint64_t player_id;
 
-        bool position_dirty;
-        bool appearance_dirty;
+        enum fv_person_state dirty_player_state;
         struct fv_person player;
 
         /* Array of fv_persons */
@@ -85,10 +84,7 @@ needs_write_poll_base(struct fv_network *nw)
         if (!base->sent_hello)
                 return true;
 
-        if (base->appearance_dirty)
-                return true;
-
-        if (base->position_dirty)
+        if (base->dirty_player_state)
                 return true;
 
         if (fv_recorder_has_packet(base->recorder))
@@ -160,7 +156,7 @@ write_position(struct fv_network *nw)
                             FV_PROTO_TYPE_NONE);
 
         if (res != -1) {
-                base->position_dirty = false;
+                base->dirty_player_state &= ~FV_PERSON_STATE_POSITION;
                 return true;
         } else {
                 return false;
@@ -182,7 +178,7 @@ write_appearance(struct fv_network *nw)
                             FV_PROTO_TYPE_NONE);
 
         if (res != -1) {
-                base->appearance_dirty = false;
+                base->dirty_player_state &= ~FV_PERSON_STATE_APPEARANCE;
                 return true;
         } else {
                 return false;
@@ -220,12 +216,12 @@ fill_write_buf(struct fv_network *nw)
                         return;
         }
 
-        if (base->appearance_dirty) {
+        if ((base->dirty_player_state & FV_PERSON_STATE_APPEARANCE)) {
                 if (!write_appearance(nw))
                         return;
         }
 
-        if (base->position_dirty) {
+        if ((base->dirty_player_state & FV_PERSON_STATE_POSITION)) {
                 if (!write_position(nw))
                         return;
         }
@@ -472,8 +468,8 @@ init_new_connection(struct fv_network *nw)
         struct fv_network_base *base = fv_network_get_base(nw);
 
         base->sent_hello = false;
-        base->position_dirty = true;
-        base->appearance_dirty = true;
+        base->dirty_player_state = (FV_PERSON_STATE_POSITION |
+                                    FV_PERSON_STATE_APPEARANCE);
         base->last_update_time = SDL_GetTicks();
 }
 

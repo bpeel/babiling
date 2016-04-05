@@ -573,17 +573,10 @@ thread_func(void *user_data)
 
                 quit = nw->quit;
 
-                if ((nw->queued_state & FV_PERSON_STATE_POSITION)) {
-                        nw->base.position_dirty = true;
-                        nw->base.player.pos = nw->queued_player.pos;
-                }
-
-                if ((nw->queued_state & FV_PERSON_STATE_APPEARANCE)) {
-                        nw->base.appearance_dirty = true;
-                        nw->base.player.appearance =
-                                nw->queued_player.appearance;
-                }
-
+                fv_person_copy_state(&nw->base.player,
+                                     &nw->queued_player,
+                                     nw->queued_state);
+                nw->base.dirty_player_state |= nw->queued_state;
                 nw->queued_state = 0;
 
                 if (!fv_list_empty(&nw->queued_hosts)) {

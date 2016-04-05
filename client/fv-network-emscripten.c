@@ -466,7 +466,7 @@ void
 fv_network_update_position(struct fv_network *nw,
                            const struct fv_person_position *position)
 {
-        nw->base.position_dirty = true;
+        nw->base.dirty_player_state |= FV_PERSON_STATE_POSITION;
         nw->base.player.pos = *position;
 
         update_write_timeout(nw);
@@ -476,7 +476,7 @@ void
 fv_network_update_appearance(struct fv_network *nw,
                              const struct fv_person_appearance *appearance)
 {
-        nw->base.appearance_dirty = true;
+        nw->base.dirty_player_state |= FV_PERSON_STATE_APPEARANCE;
         nw->base.player.appearance = *appearance;
 
         update_write_timeout(nw);
