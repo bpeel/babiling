@@ -410,11 +410,12 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
 {
         int unit_pixels;
         float unit_size_x, unit_size_y;
-        int max_columns;
+        int max_columns, max_rows;
         int n_columns, n_rows;
         int n_quads = 0;
         int i, column, row;
         int flag_index;
+        int remainder;
         float border_x1, border_y1;
         float flag_x1, flag_y1;
 
@@ -430,12 +431,34 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
                         FV_FLAG_PAINTER_GAP_RATIO) /
                        (FV_FLAG_TEXTURE_FLAG_RATIO_X +
                         FV_FLAG_PAINTER_GAP_RATIO));
+        max_rows = ((screen_height / unit_pixels -
+                     FV_FLAG_TEXTURE_BORDER_RATIO +
+                     FV_FLAG_PAINTER_GAP_RATIO) /
+                    (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
+                     FV_FLAG_PAINTER_GAP_RATIO));
 
         n_columns = MIN(max_columns, n_flags);
         if (n_columns < 1)
                 n_columns = 1;
 
-        n_rows = (n_flags + n_columns - 1) / n_columns;
+        while (true) {
+                n_rows = (n_flags + n_columns - 1) / n_columns;
+
+                if (n_columns <= 1 || n_rows + 1 > max_rows)
+                        break;
+
+                if (n_columns <= n_rows * 4 / 3) {
+                        remainder = n_flags % n_columns;
+
+                        if (remainder == 0)
+                                break;
+
+                        if (remainder + n_rows - 1 > n_columns - 1)
+                                break;
+                }
+
+                n_columns--;
+        }
 
         border_x1 = -(n_columns * (FV_FLAG_TEXTURE_FLAG_RATIO_X +
                                    FV_FLAG_PAINTER_GAP_RATIO) -
@@ -468,8 +491,9 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
                             FV_FLAG_TEXTURE_BORDER_RATIO) *
                            unit_size_x);
                 flag_y1 = (border_y1 +
-                           (row * (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
-                                   FV_FLAG_PAINTER_GAP_RATIO) +
+                           ((n_rows - 1 - row) *
+                            (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
+                             FV_FLAG_PAINTER_GAP_RATIO) +
                             FV_FLAG_TEXTURE_BORDER_RATIO) *
                            unit_size_y);
 
