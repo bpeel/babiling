@@ -49,23 +49,16 @@
  */
 #define FV_LOGIC_ACCELERATION 20.0f
 
-struct fv_logic_position {
-        float x, y;
-        float current_direction;
+struct fv_logic_player {
+        struct fv_logic_person person;
         float target_direction;
         float current_speed;
         float target_speed;
-};
-
-struct fv_logic_player {
-        struct fv_logic_position position;
-        enum fv_person_type type;
         float center_x, center_y;
 };
 
 struct fv_logic_npc {
-        struct fv_logic_position position;
-        enum fv_person_type type;
+        struct fv_logic_person person;
 };
 
 struct fv_logic {
@@ -86,16 +79,17 @@ fv_logic_new(void)
         fv_buffer_init(&logic->npcs);
 
         player = &logic->player;
-        player->position.x = FV_MAP_START_X;
-        player->position.y = FV_MAP_START_Y;
-        player->position.current_direction = -M_PI / 2.0f;
-        player->position.target_direction = 0.0f;
-        player->position.current_speed = 0.0f;
-        player->position.target_speed = 0.0f;
-        player->type = fv_random_range(0, FV_PERSON_N_TYPES);
+        player->person.x = FV_MAP_START_X;
+        player->person.y = FV_MAP_START_Y;
+        player->person.direction = -M_PI / 2.0f;
+        player->person.type = fv_random_range(0, FV_PERSON_N_TYPES);
 
-        player->center_x = player->position.x;
-        player->center_y = player->position.y;
+        player->target_direction = 0.0f;
+        player->current_speed = 0.0f;
+        player->target_speed = 0.0f;
+
+        player->center_x = player->person.x;
+        player->center_y = player->person.y;
 
         logic->state = FV_LOGIC_STATE_RUNNING;
 
@@ -113,28 +107,28 @@ is_wall(int x, int y)
 }
 
 static bool
-position_in_range(const struct fv_logic_position *position,
-                  float x, float y,
-                  float distance)
+person_in_range(const struct fv_logic_person *person,
+                float x, float y,
+                float distance)
 {
-        float dx = x - position->x;
-        float dy = y - position->y;
+        float dx = x - person->x;
+        float dy = y - person->y;
 
         return dx * dx + dy * dy < distance * distance;
 }
 
 static bool
 person_blocking(const struct fv_logic *logic,
-                const struct fv_logic_position *this_position,
+                const struct fv_logic_person *this_person,
                 float x, float y)
 {
         const struct fv_logic_npc *npc;
         int i;
 
-        if (this_position != &logic->player.position &&
-            position_in_range(&logic->player.position,
-                              x, y,
-                              FV_LOGIC_PERSON_SIZE / 2.0f))
+        if (this_person != &logic->player.person &&
+            person_in_range(&logic->player.person,
+                            x, y,
+                            FV_LOGIC_PERSON_SIZE / 2.0f))
                 return true;
 
         for (i = 0;
@@ -142,12 +136,12 @@ person_blocking(const struct fv_logic *logic,
              i++) {
                 npc = (struct fv_logic_npc *) logic->npcs.data + i;
 
-                if (this_position == &npc->position)
+                if (this_person == &npc->person)
                         continue;
 
-                if (position_in_range(&npc->position,
-                                      x, y,
-                                      FV_LOGIC_PERSON_SIZE / 2.0f))
+                if (person_in_range(&npc->person,
+                                    x, y,
+                                    FV_LOGIC_PERSON_SIZE / 2.0f))
                         return true;
         }
 
@@ -155,16 +149,16 @@ person_blocking(const struct fv_logic *logic,
 }
 
 static bool
-update_position_direction(struct fv_logic *logic,
-                          struct fv_logic_position *position,
-                          float progress_secs)
+update_player_direction(struct fv_logic *logic,
+                        struct fv_logic_player *player,
+                        float progress_secs)
 {
         float diff, turned;
 
-        if (position->target_direction == position->current_direction)
+        if (player->target_direction == player->person.direction)
                 return false;
 
-        diff = position->target_direction - position->current_direction;
+        diff = player->target_direction - player->person.direction;
 
         if (diff > M_PI)
                 diff = diff - 2.0f * M_PI;
@@ -174,21 +168,20 @@ update_position_direction(struct fv_logic *logic,
         turned = progress_secs * FV_LOGIC_TURN_SPEED;
 
         if (turned >= fabsf(diff))
-                position->current_direction =
-                        position->target_direction;
+                player->person.direction = player->target_direction;
         else if (diff < 0.0f)
-                position->current_direction -= turned;
+                player->person.direction -= turned;
         else
-                position->current_direction += turned;
+                player->person.direction += turned;
 
         return true;
 }
 
 static bool
-update_position_xy(struct fv_logic *logic,
-                   struct fv_logic_position *position,
-                   float speed,
-                   float progress_secs)
+update_player_xy(struct fv_logic *logic,
+                 struct fv_logic_player *player,
+                 float speed,
+                 float progress_secs)
 {
         bool ret = false;
         float distance;
@@ -197,7 +190,7 @@ update_position_xy(struct fv_logic *logic,
 
         distance = speed * progress_secs;
 
-        diff = distance * cosf(position->target_direction);
+        diff = distance * cosf(player->target_direction);
 
         /* Don't let the player move more than one tile per frame
          * because otherwise it might be possible to skip over
@@ -205,30 +198,30 @@ update_position_xy(struct fv_logic *logic,
         if (fabsf(diff) > 1.0f)
                 diff = copysign(1.0f, diff);
 
-        pos = (position->x + diff +
+        pos = (player->person.x + diff +
                copysignf(FV_LOGIC_PERSON_SIZE / 2.0f, diff));
         if (!is_wall(floorf(pos),
-                     floorf(position->y + FV_LOGIC_PERSON_SIZE / 2.0f)) &&
+                     floorf(player->person.y + FV_LOGIC_PERSON_SIZE / 2.0f)) &&
             !is_wall(floorf(pos),
-                     floorf(position->y - FV_LOGIC_PERSON_SIZE / 2.0f)) &&
-            !person_blocking(logic, position, pos, position->y)) {
-                position->x += diff;
+                     floorf(player->person.y - FV_LOGIC_PERSON_SIZE / 2.0f)) &&
+            !person_blocking(logic, &player->person, pos, player->person.y)) {
+                player->person.x += diff;
                 ret = true;
         }
 
-        diff = distance * sinf(position->target_direction);
+        diff = distance * sinf(player->target_direction);
 
         if (fabsf(diff) > 1.0f)
                 diff = copysign(1.0f, diff);
 
-        pos = (position->y + diff +
+        pos = (player->person.y + diff +
                copysignf(FV_LOGIC_PERSON_SIZE / 2.0f, diff));
-        if (!is_wall(floorf(position->x + FV_LOGIC_PERSON_SIZE / 2.0f),
+        if (!is_wall(floorf(player->person.x + FV_LOGIC_PERSON_SIZE / 2.0f),
                      floorf(pos)) &&
-            !is_wall(floorf(position->x - FV_LOGIC_PERSON_SIZE / 2.0f),
+            !is_wall(floorf(player->person.x - FV_LOGIC_PERSON_SIZE / 2.0f),
                      floorf(pos)) &&
-            !person_blocking(logic, position, position->x, pos)) {
-                position->y += diff;
+            !person_blocking(logic, &player->person, player->person.x, pos)) {
+                player->person.y += diff;
                 ret = true;
         }
 
@@ -236,7 +229,7 @@ update_position_xy(struct fv_logic *logic,
          * again to move away.
          */
         if (!ret)
-                position->current_speed = 0.0f;
+                player->current_speed = 0.0f;
 
         return ret;
 }
@@ -246,8 +239,8 @@ update_position_xy(struct fv_logic *logic,
  * that time.
  */
 static float
-update_position_speed(struct fv_logic_position *position,
-                      float progress_secs)
+update_player_speed(struct fv_logic_player *player,
+                    float progress_secs)
 {
         float direction_difference;
         float target_difference;
@@ -260,67 +253,66 @@ update_position_speed(struct fv_logic_position *position,
          * current angle then the player can't move at all until they
          * finish turning.
          */
-        direction_difference = fabsf(position->target_direction -
-                                     position->current_direction);
+        direction_difference = fabsf(player->target_direction -
+                                     player->person.direction);
         if (direction_difference > M_PI)
                 direction_difference = 2.0f * M_PI - direction_difference;
         if (direction_difference > 90.5f * M_PI / 180.0f)
-                return position->current_speed = 0.0f;
+                return player->current_speed = 0.0f;
 
-        target_difference =
-                position->target_speed - position->current_speed;
+        target_difference = player->target_speed - player->current_speed;
 
         /* Deceleration happens instantly */
         if (target_difference <= 0.0f)
-                return position->current_speed = position->target_speed;
+                return player->current_speed = player->target_speed;
 
         time_difference = FV_LOGIC_ACCELERATION * progress_secs;
 
         if (time_difference < target_difference) {
-                average_speed = (position->current_speed +
+                average_speed = (player->current_speed +
                                  time_difference / 2.0f);
-                position->current_speed += time_difference;
+                player->current_speed += time_difference;
                 return average_speed;
         }
 
         acceleration_time = target_difference / FV_LOGIC_ACCELERATION;
-        average_acceleration_speed = (position->current_speed +
-                                      position->target_speed) / 2.0f;
+        average_acceleration_speed = (player->current_speed +
+                                      player->target_speed) / 2.0f;
         average_speed = ((average_acceleration_speed *
                           acceleration_time +
-                          position->target_speed *
+                          player->target_speed *
                           (progress_secs - acceleration_time)) /
                          progress_secs);
 
-        position->current_speed = position->target_speed;
+        player->current_speed = player->target_speed;
 
         return average_speed;
 }
 
 static enum fv_logic_state_change
-update_position(struct fv_logic *logic,
-                struct fv_logic_position *position,
-                float progress_secs)
+update_player_position(struct fv_logic *logic,
+                       struct fv_logic_player *player,
+                       float progress_secs)
 {
         bool position_changed, direction_changed;
         enum fv_logic_state_change state_change = 0;
         float average_speed;
 
-        if (position->target_speed == 0.0f &&
-            position->current_speed == 0.0f)
+        if (player->target_speed == 0.0f &&
+            player->current_speed == 0.0f)
                 return 0;
 
         state_change |= FV_LOGIC_STATE_CHANGE_ALIVE;
 
-        average_speed = update_position_speed(position, progress_secs);
+        average_speed = update_player_speed(player, progress_secs);
 
         position_changed =
-                update_position_xy(logic,
-                                   position,
-                                   average_speed,
-                                   progress_secs);
+                update_player_xy(logic,
+                                 player,
+                                 average_speed,
+                                 progress_secs);
         direction_changed =
-                update_position_direction(logic, position, progress_secs);
+                update_player_direction(logic, player, progress_secs);
 
         if (position_changed || direction_changed)
                 state_change |= FV_LOGIC_STATE_CHANGE_POSITION;
@@ -331,8 +323,8 @@ update_position(struct fv_logic *logic,
 static enum fv_logic_state_change
 update_center(struct fv_logic_player *player)
 {
-        float dx = player->position.x - player->center_x;
-        float dy = player->position.y - player->center_y;
+        float dx = player->person.x - player->center_x;
+        float dy = player->person.y - player->center_y;
         float d2, d;
 
         d2 = dx * dx + dy * dy;
@@ -354,13 +346,11 @@ update_player_movement(struct fv_logic *logic,
 {
         struct fv_logic_player *player = &logic->player;
 
-        if (player->position.target_speed == 0.0f &&
-            player->position.current_speed == 0.0f)
+        if (player->target_speed == 0.0f &&
+            player->current_speed == 0.0f)
                 return 0;
 
-        return (update_position(logic,
-                                &player->position,
-                                progress_secs) |
+        return (update_player_position(logic, player, progress_secs) |
                 update_center(player));
 }
 
@@ -398,10 +388,10 @@ fv_logic_set_direction(struct fv_logic *logic,
         struct fv_logic_player *player = &logic->player;
 
         if (speed > 0.0f) {
-                player->position.target_speed = speed;
-                player->position.target_direction = direction;
+                player->target_speed = speed;
+                player->target_direction = direction;
         } else {
-                player->position.target_speed = 0.0f;
+                player->target_speed = 0.0f;
         }
 }
 
@@ -420,29 +410,28 @@ fv_logic_update_npc(struct fv_logic *logic,
                     enum fv_person_state state)
 {
         struct fv_logic_npc *npc;
-        struct fv_logic_position *pos;
 
         assert(npc_num < logic->npcs.length / sizeof (struct fv_logic_npc));
 
         npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
-        pos = &npc->position;
 
         if ((state & FV_PERSON_STATE_POSITION)) {
-                pos->x = person->pos.x / (float) UINT32_MAX * FV_MAP_WIDTH;
-                pos->y = person->pos.y / (float) UINT32_MAX * FV_MAP_HEIGHT;
-                pos->current_direction = (person->pos.direction /
-                                          (float) UINT16_MAX *
-                                          2 * M_PI);
-                if (pos->current_direction > M_PI)
-                        pos->current_direction -= 2 * M_PI;
-                pos->target_direction = pos->current_direction;
-                pos->target_speed = 0.0f;
-                pos->current_speed = 0.0f;
+                npc->person.x = (person->pos.x /
+                                 (float) UINT32_MAX *
+                                 FV_MAP_WIDTH);
+                npc->person.y = (person->pos.y /
+                                 (float) UINT32_MAX *
+                                 FV_MAP_HEIGHT);
+                npc->person.direction = (person->pos.direction /
+                                         (float) UINT16_MAX *
+                                         2 * M_PI);
+                if (npc->person.direction > M_PI)
+                        npc->person.direction -= 2 * M_PI;
         }
 
         if ((state & FV_PERSON_STATE_APPEARANCE)) {
-                npc->type = MIN(person->appearance.image,
-                                FV_PERSON_N_TYPES - 1);
+                npc->person.type = MIN(person->appearance.image,
+                                       FV_PERSON_N_TYPES - 1);
         }
 }
 
@@ -458,29 +447,32 @@ fv_logic_get_player(struct fv_logic *logic,
                     struct fv_person *person,
                     enum fv_person_state state)
 {
-        const struct fv_logic_position *pos =
-                &logic->player.position;
+        const struct fv_logic_player *player = &logic->player;
         float direction;
 
         if ((state & FV_PERSON_STATE_POSITION)) {
-                person->pos.x = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
-                person->pos.y = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
-                direction = pos->current_direction;
+                person->pos.x = (player->person.x /
+                                 (float) FV_MAP_WIDTH *
+                                 UINT32_MAX);
+                person->pos.y = (player->person.y /
+                                 (float) FV_MAP_HEIGHT *
+                                 UINT32_MAX);
+                direction = player->person.direction;
                 if (direction < 0)
                         direction += 2 * M_PI;
                 person->pos.direction = direction / (2 * M_PI) * UINT16_MAX;
         }
 
         if ((state & FV_PERSON_STATE_APPEARANCE))
-                person->appearance.image = logic->player.type;
+                person->appearance.image = player->person.type;
 }
 
 void
 fv_logic_get_player_position(struct fv_logic *logic,
                              float *x, float *y)
 {
-        *x = logic->player.position.x;
-        *y = logic->player.position.y;
+        *x = logic->player.person.x;
+        *y = logic->player.person.y;
 }
 
 void
@@ -496,31 +488,17 @@ fv_logic_for_each_person(struct fv_logic *logic,
                          fv_logic_person_cb person_cb,
                          void *user_data)
 {
-        const struct fv_logic_player *player;
         const struct fv_logic_npc *npc;
-        struct fv_logic_person person;
         int i;
 
-        player = &logic->player;
-
-        person.x = player->position.x;
-        person.y = player->position.y;
-        person.direction = player->position.current_direction;
-        person.type = player->type;
-
-        person_cb(&person, user_data);
+        person_cb(&logic->player.person, user_data);
 
         for (i = 0;
              i < logic->npcs.length / sizeof (struct fv_logic_npc);
              i++) {
                 npc = (struct fv_logic_npc *) logic->npcs.data + i;
 
-                person.x = npc->position.x;
-                person.y = npc->position.y;
-                person.direction = npc->position.current_direction;
-                person.type = npc->type;
-
-                person_cb(&person, user_data);
+                person_cb(&npc->person, user_data);
         }
 }
 
