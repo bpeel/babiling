@@ -83,6 +83,7 @@ fv_logic_new(void)
         player->person.y = FV_MAP_START_Y;
         player->person.direction = -M_PI / 2.0f;
         player->person.type = fv_random_range(0, FV_PERSON_N_TYPES);
+        player->person.n_flags = 0;
 
         player->target_direction = 0.0f;
         player->current_speed = 0.0f;
@@ -399,8 +400,16 @@ void
 fv_logic_set_n_npcs(struct fv_logic *logic,
                     int n_npcs)
 {
+        int old_length = logic->npcs.length;
+
         fv_buffer_set_length(&logic->npcs,
                              sizeof (struct fv_logic_npc) * n_npcs);
+
+        if (old_length < logic->npcs.length) {
+                memset(logic->npcs.data + old_length,
+                       0,
+                       logic->npcs.length - old_length);
+        }
 }
 
 void
@@ -432,6 +441,13 @@ fv_logic_update_npc(struct fv_logic *logic,
         if ((state & FV_PERSON_STATE_APPEARANCE)) {
                 npc->person.type = MIN(person->appearance.image,
                                        FV_PERSON_N_TYPES - 1);
+        }
+
+        if ((state & FV_PERSON_STATE_FLAGS)) {
+                npc->person.n_flags = person->flags.n_flags;
+                memcpy(npc->person.flags,
+                       person->flags.flags,
+                       sizeof npc->person.flags[0] * person->flags.n_flags);
         }
 }
 
@@ -465,6 +481,13 @@ fv_logic_get_player(struct fv_logic *logic,
 
         if ((state & FV_PERSON_STATE_APPEARANCE))
                 person->appearance.image = player->person.type;
+
+        if ((state & FV_PERSON_STATE_FLAGS)) {
+                person->flags.n_flags = player->person.n_flags;
+                memcpy(person->flags.flags,
+                       player->person.flags,
+                       sizeof person->flags.flags[0] * person->flags.n_flags);
+        }
 }
 
 void
