@@ -22,6 +22,9 @@
 
 #include <stdint.h>
 
+#include "fv-proto.h"
+#include "fv-flag.h"
+
 enum fv_person_type {
         FV_PERSON_TYPE_BAMBISTO1,
         FV_PERSON_TYPE_BAMBISTO2,
@@ -42,15 +45,22 @@ struct fv_person_appearance {
         uint8_t image;
 };
 
+struct fv_person_flags {
+        int n_flags;
+        enum fv_flag flags[FV_PROTO_MAX_FLAGS];
+};
+
 enum fv_person_state {
         FV_PERSON_STATE_POSITION = (1 << 0),
         FV_PERSON_STATE_APPEARANCE = (1 << 1),
-        FV_PERSON_STATE_ALL = (1 << 2) - 1,
+        FV_PERSON_STATE_FLAGS = (1 << 2),
+        FV_PERSON_STATE_ALL = (1 << 3) - 1,
 };
 
 struct fv_person {
         struct fv_person_position pos;
         struct fv_person_appearance appearance;
+        struct fv_person_flags flags;
 };
 
 void

@@ -186,6 +186,29 @@ write_appearance(struct fv_network *nw)
 }
 
 static bool
+write_flags(struct fv_network *nw)
+{
+        struct fv_network_base *base = fv_network_get_base(nw);
+        int res;
+
+        res = write_command(nw,
+                            FV_PROTO_UPDATE_FLAGS,
+
+                            FV_PROTO_TYPE_FLAGS,
+                            base->player.flags.n_flags,
+                            base->player.flags.flags,
+
+                            FV_PROTO_TYPE_NONE);
+
+        if (res != -1) {
+                base->dirty_player_state &= ~FV_PERSON_STATE_FLAGS;
+                return true;
+        } else {
+                return false;
+        }
+}
+
+static bool
 write_keep_alive(struct fv_network *nw)
 {
         int res;
@@ -223,6 +246,11 @@ fill_write_buf(struct fv_network *nw)
 
         if ((base->dirty_player_state & FV_PERSON_STATE_POSITION)) {
                 if (!write_position(nw))
+                        return;
+        }
+
+        if ((base->dirty_player_state & FV_PERSON_STATE_FLAGS)) {
+                if (!write_flags(nw))
                         return;
         }
 
@@ -394,6 +422,39 @@ handle_player_appearance(struct fv_network *nw,
 }
 
 static bool
+handle_player_flags(struct fv_network *nw,
+                    const uint8_t *payload,
+                    size_t payload_length)
+{
+        struct fv_network_base *base = fv_network_get_base(nw);
+        struct fv_person *person;
+        struct fv_person_flags flags;
+        uint16_t player_num;
+
+        if (!fv_proto_read_payload(payload,
+                                   payload_length,
+                                   FV_PROTO_TYPE_UINT16, &player_num,
+                                   FV_PROTO_TYPE_FLAGS,
+                                   &flags.n_flags,
+                                   flags.flags,
+                                   FV_PROTO_TYPE_NONE)) {
+                set_socket_error(nw);
+                return false;
+        }
+
+        if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
+                person = (struct fv_person *) base->players.data + player_num;
+                person->flags.n_flags = flags.n_flags;
+                memcpy(person->flags.flags,
+                       flags.flags,
+                       (sizeof flags.flags[0]) * person->flags.n_flags);
+                dirty_player_state(base, player_num, FV_PERSON_STATE_FLAGS);
+        }
+
+        return true;
+}
+
+static bool
 handle_player_speech(struct fv_network *nw,
                      const uint8_t *payload,
                      size_t payload_length)
@@ -450,6 +511,11 @@ handle_message(struct fv_network *nw,
                 return handle_player_appearance(nw,
                                                 message_payload,
                                                 message_payload_length);
+
+        case FV_PROTO_PLAYER_FLAGS:
+                return handle_player_flags(nw,
+                                           message_payload,
+                                           message_payload_length);
 
         case FV_PROTO_PLAYER_SPEECH:
                 return handle_player_speech(nw,

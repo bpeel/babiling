@@ -1476,7 +1476,8 @@ main(int argc, char **argv)
         data.logic = fv_logic_new();
 
         initial_update_state = (FV_PERSON_STATE_POSITION |
-                                FV_PERSON_STATE_APPEARANCE);
+                                FV_PERSON_STATE_APPEARANCE |
+                                FV_PERSON_STATE_FLAGS);
         fv_logic_get_player(data.logic,
                             &player,
                             initial_update_state);

@@ -31,4 +31,11 @@ fv_person_copy_state(struct fv_person *dst,
 
         if ((state & FV_PERSON_STATE_APPEARANCE))
                 dst->appearance = src->appearance;
+
+        if ((state & FV_PERSON_STATE_FLAGS)) {
+                dst->flags.n_flags = src->flags.n_flags;
+                memcpy(dst->flags.flags,
+                       src->flags.flags,
+                       sizeof src->flags.flags[0] * src->flags.n_flags);
+        }
 }
