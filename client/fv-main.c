@@ -950,7 +950,8 @@ paint(struct data *data)
 
         if ((state_change & FV_LOGIC_STATE_CHANGE_POSITION)) {
                 fv_logic_get_player(data->logic,
-                                    &player);
+                                    &player,
+                                    FV_PERSON_STATE_POSITION);
                 fv_network_update_position(data->nw, &player.pos);
         }
 
@@ -1471,7 +1472,10 @@ main(int argc, char **argv)
 
         data.logic = fv_logic_new();
 
-        fv_logic_get_player(data.logic, &player);
+        fv_logic_get_player(data.logic,
+                            &player,
+                            (FV_PERSON_STATE_POSITION |
+                             FV_PERSON_STATE_APPEARANCE));
         fv_network_update_position(data.nw, &player.pos);
         fv_network_update_appearance(data.nw, &player.appearance);
 

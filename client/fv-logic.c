@@ -455,19 +455,24 @@ fv_logic_free(struct fv_logic *logic)
 
 void
 fv_logic_get_player(struct fv_logic *logic,
-                    struct fv_person *person)
+                    struct fv_person *person,
+                    enum fv_person_state state)
 {
         const struct fv_logic_position *pos =
                 &logic->player.position;
         float direction;
 
-        person->pos.x = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
-        person->pos.y = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
-        direction = pos->current_direction;
-        if (direction < 0)
-                direction += 2 * M_PI;
-        person->pos.direction = direction / (2 * M_PI) * UINT16_MAX;
-        person->appearance.image = logic->player.type;
+        if ((state & FV_PERSON_STATE_POSITION)) {
+                person->pos.x = pos->x / (float) FV_MAP_WIDTH * UINT32_MAX;
+                person->pos.y = pos->y / (float) FV_MAP_HEIGHT * UINT32_MAX;
+                direction = pos->current_direction;
+                if (direction < 0)
+                        direction += 2 * M_PI;
+                person->pos.direction = direction / (2 * M_PI) * UINT16_MAX;
+        }
+
+        if ((state & FV_PERSON_STATE_APPEARANCE))
+                person->appearance.image = logic->player.type;
 }
 
 void

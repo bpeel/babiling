@@ -68,7 +68,8 @@ fv_logic_update(struct fv_logic *logic,
 
 void
 fv_logic_get_player(struct fv_logic *logic,
-                    struct fv_person *person);
+                    struct fv_person *person,
+                    enum fv_person_state state);
 
 void
 fv_logic_get_player_position(struct fv_logic *logic,
