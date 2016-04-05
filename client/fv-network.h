@@ -64,12 +64,9 @@ fv_network_add_host(struct fv_network *nw,
                     const char *name);
 
 void
-fv_network_update_appearance(struct fv_network *nw,
-                             const struct fv_person_appearance *appearance);
-
-void
-fv_network_update_position(struct fv_network *nw,
-                           const struct fv_person_position *position);
+fv_network_update_player(struct fv_network *nw,
+                         const struct fv_person *person,
+                         enum fv_person_state state);
 
 void
 fv_network_free(struct fv_network *nw);

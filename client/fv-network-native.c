@@ -755,23 +755,15 @@ error_base:
 }
 
 void
-fv_network_update_position(struct fv_network *nw,
-                           const struct fv_person_position *position)
+fv_network_update_player(struct fv_network *nw,
+                         const struct fv_person *person,
+                         enum fv_person_state state)
 {
         fv_mutex_lock(nw->mutex);
-        nw->queued_player.pos = *position;
-        nw->queued_state |= FV_PERSON_STATE_POSITION;
-        fv_network_wakeup_thread(nw);
-        fv_mutex_unlock(nw->mutex);
-}
-
-void
-fv_network_update_appearance(struct fv_network *nw,
-                             const struct fv_person_appearance *appearance)
-{
-        fv_mutex_lock(nw->mutex);
-        nw->queued_player.appearance = *appearance;
-        nw->queued_state |= FV_PERSON_STATE_APPEARANCE;
+        fv_person_copy_state(&nw->queued_player,
+                             person,
+                             state);
+        nw->queued_state |= state;
         fv_network_wakeup_thread(nw);
         fv_mutex_unlock(nw->mutex);
 }

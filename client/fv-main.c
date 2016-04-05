@@ -952,7 +952,9 @@ paint(struct data *data)
                 fv_logic_get_player(data->logic,
                                     &player,
                                     FV_PERSON_STATE_POSITION);
-                fv_network_update_position(data->nw, &player.pos);
+                fv_network_update_player(data->nw,
+                                         &player,
+                                         FV_PERSON_STATE_POSITION);
         }
 
         fv_logic_get_center(data->logic, &center_x, &center_y);
@@ -1341,6 +1343,7 @@ main(int argc, char **argv)
 {
         struct data data;
         struct fv_person player;
+        enum fv_person_state initial_update_state;
         Uint32 flags;
         int res;
         int ret = EXIT_SUCCESS;
@@ -1472,12 +1475,12 @@ main(int argc, char **argv)
 
         data.logic = fv_logic_new();
 
+        initial_update_state = (FV_PERSON_STATE_POSITION |
+                                FV_PERSON_STATE_APPEARANCE);
         fv_logic_get_player(data.logic,
                             &player,
-                            (FV_PERSON_STATE_POSITION |
-                             FV_PERSON_STATE_APPEARANCE));
-        fv_network_update_position(data.nw, &player.pos);
-        fv_network_update_appearance(data.nw, &player.appearance);
+                            initial_update_state);
+        fv_network_update_player(data.nw, &player, initial_update_state);
 
         data.image_data = fv_image_data_new(data.image_data_event);
 

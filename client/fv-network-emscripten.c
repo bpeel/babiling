@@ -463,21 +463,12 @@ fv_network_new(struct fv_audio_buffer *audio_buffer,
 }
 
 void
-fv_network_update_position(struct fv_network *nw,
-                           const struct fv_person_position *position)
+fv_network_update_player(struct fv_network *nw,
+                         const struct fv_person *person,
+                         enum fv_person_state state)
 {
-        nw->base.dirty_player_state |= FV_PERSON_STATE_POSITION;
-        nw->base.player.pos = *position;
-
-        update_write_timeout(nw);
-}
-
-void
-fv_network_update_appearance(struct fv_network *nw,
-                             const struct fv_person_appearance *appearance)
-{
-        nw->base.dirty_player_state |= FV_PERSON_STATE_APPEARANCE;
-        nw->base.player.appearance = *appearance;
+        nw->base.dirty_player_state |= state;
+        fv_person_copy_state(&nw->base.player, person, state);
 
         update_write_timeout(nw);
 }
