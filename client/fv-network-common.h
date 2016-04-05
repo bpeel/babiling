@@ -33,8 +33,9 @@ struct fv_network_base {
 
         /* Array of fv_persons */
         struct fv_buffer players;
-        /* Array of one bit for each player to mark whether it has
-         * changed since the last consistent state was reached
+        /* Array of FV_NETWORK_DIRTY_PLAYER_BITS bits for each player
+         * to mark which state has changed since the last consistent
+         * state was reached
          */
         struct fv_buffer dirty_players;
 
@@ -246,6 +247,22 @@ fill_write_buf(struct fv_network *nw)
         }
 }
 
+static void
+dirty_player_state(struct fv_network_base *base,
+                   int player_num,
+                   enum fv_person_state state)
+{
+        int bit;
+
+        while (state) {
+                bit = fv_util_ffs(state) - 1;
+                fv_bitmask_set(&base->dirty_players,
+                               player_num * FV_NETWORK_DIRTY_PLAYER_BITS + bit,
+                               true);
+                state &= ~(1 << bit);
+        }
+}
+
 static bool
 handle_player_id(struct fv_network *nw,
                  const uint8_t *payload,
@@ -314,7 +331,8 @@ handle_n_players(struct fv_network *nw,
 
         fv_buffer_set_length(&base->players,
                              sizeof (struct fv_person) * n_players);
-        fv_bitmask_set_length(&base->dirty_players, n_players);
+        fv_bitmask_set_length(&base->dirty_players,
+                              n_players * FV_NETWORK_DIRTY_PLAYER_BITS);
 
         return true;
 }
@@ -343,7 +361,7 @@ handle_player_position(struct fv_network *nw,
         if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
                 person = (struct fv_person *) base->players.data + player_num;
                 person->pos = position;
-                fv_bitmask_set(&base->dirty_players, player_num, true);
+                dirty_player_state(base, player_num, FV_PERSON_STATE_POSITION);
         }
 
         return true;
@@ -371,7 +389,9 @@ handle_player_appearance(struct fv_network *nw,
         if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
                 person = (struct fv_person *) base->players.data + player_num;
                 person->appearance = appearance;
-                fv_bitmask_set(&base->dirty_players, player_num, true);
+                dirty_player_state(base,
+                                   player_num,
+                                   FV_PERSON_STATE_APPEARANCE);
         }
 
         return true;

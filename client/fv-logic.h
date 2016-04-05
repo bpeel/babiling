@@ -98,7 +98,8 @@ fv_logic_set_n_npcs(struct fv_logic *logic,
 void
 fv_logic_update_npc(struct fv_logic *logic,
                     int npc_num,
-                    const struct fv_person *person);
+                    const struct fv_person *person,
+                    enum fv_person_state state);
 
 enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic);

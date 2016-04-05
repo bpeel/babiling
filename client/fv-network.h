@@ -28,13 +28,19 @@
 
 struct fv_network;
 
+#define FV_NETWORK_DIRTY_PLAYER_BITS 4
+_Static_assert(FV_PERSON_STATE_ALL < (1 << FV_NETWORK_DIRTY_PLAYER_BITS),
+               "Too many person state bits to fit in the network dirty mask");
+
 struct fv_network_consistent_event {
         int n_players;
 
         const struct fv_person *players;
 
-        /* fv_bitmask with 1-bit for each player to mark whether it
-         * has changed since the last consistent event
+        /* fv_bitmask with FV_NETWORK_DIRTY_PLAYER_BITS bits for each
+         * player to mark whether it has changed since the last
+         * consistent event. Each bit represents one value of
+         * FV_PERSON_STATE.
          */
         const struct fv_buffer *dirty_players;
 };

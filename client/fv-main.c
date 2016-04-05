@@ -214,7 +214,9 @@ struct data {
         struct fv_mutex *npcs_mutex;
         /* Array of fv_person */
         struct fv_buffer npcs;
-        /* Bitmask with a bit for each npc */
+        /* Array with FV_NETWORK_DIRTY_PLAYER_BITS bits of
+         * fv_person_state for each npc
+         */
         struct fv_buffer dirty_npcs;
 
 #endif /* EMSCRIPTEN */
@@ -889,7 +891,7 @@ update_npcs(struct data *data)
 {
 #ifndef EMSCRIPTEN
         const struct fv_person *npcs;
-        int npc_num;
+        int npc_num, state_num, bit_num;
 
         fv_mutex_lock(data->npcs_mutex);
 
@@ -899,10 +901,13 @@ update_npcs(struct data *data)
                             data->npcs.length /
                             sizeof (struct fv_person));
 
-        fv_bitmask_for_each(&data->dirty_npcs, npc_num) {
+        fv_bitmask_for_each(&data->dirty_npcs, bit_num) {
+                npc_num = bit_num / FV_NETWORK_DIRTY_PLAYER_BITS;
+                state_num = bit_num % FV_NETWORK_DIRTY_PLAYER_BITS;
                 fv_logic_update_npc(data->logic,
                                     npc_num,
-                                    npcs + npc_num);
+                                    npcs + npc_num,
+                                    1 << state_num);
         }
 
         memset(data->dirty_npcs.data, 0, data->dirty_npcs.length);
@@ -997,14 +1002,17 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
                     void *user_data)
 {
         struct data *data = user_data;
-        int player_num;
+        int player_num, state_num, bit_num;
 
         fv_logic_set_n_npcs(data->logic, event->n_players);
 
-        fv_bitmask_for_each(event->dirty_players, player_num) {
+        fv_bitmask_for_each(event->dirty_players, bit_num) {
+                player_num = bit_num / FV_NETWORK_DIRTY_PLAYER_BITS;
+                state_num = bit_num % FV_NETWORK_DIRTY_PLAYER_BITS;
                 fv_logic_update_npc(data->logic,
                                     player_num,
-                                    &event->players[player_num]);
+                                    event->players + player_num,
+                                    1 << state_num);
         }
 
         queue_redraw(data);
@@ -1018,20 +1026,23 @@ consistent_event_cb(const struct fv_network_consistent_event *event,
 {
         struct data *data = user_data;
         SDL_Event redraw_event = { .type = data->redraw_user_event };
-        int player_num;
+        int player_num, state_num, bit_num;
 
         fv_mutex_lock(data->npcs_mutex);
 
         fv_buffer_set_length(&data->npcs,
                              sizeof (struct fv_person) * event->n_players);
-        fv_bitmask_set_length(&data->dirty_npcs, event->n_players);
+        fv_bitmask_set_length(&data->dirty_npcs,
+                              event->n_players * FV_NETWORK_DIRTY_PLAYER_BITS);
         fv_bitmask_or(&data->dirty_npcs, event->dirty_players);
 
-        fv_bitmask_for_each(event->dirty_players, player_num) {
-                memcpy(data->npcs.data +
-                       player_num * sizeof (struct fv_person),
-                       &event->players[player_num],
-                       sizeof (struct fv_person));
+        fv_bitmask_for_each(event->dirty_players, bit_num) {
+                player_num = bit_num / FV_NETWORK_DIRTY_PLAYER_BITS;
+                state_num = bit_num % FV_NETWORK_DIRTY_PLAYER_BITS;
+                fv_person_copy_state((struct fv_person *) data->npcs.data +
+                                     player_num,
+                                     event->players + player_num,
+                                     1 << state_num);
         }
 
         SDL_PushEvent(&redraw_event);

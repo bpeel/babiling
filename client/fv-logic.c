@@ -416,7 +416,8 @@ fv_logic_set_n_npcs(struct fv_logic *logic,
 void
 fv_logic_update_npc(struct fv_logic *logic,
                     int npc_num,
-                    const struct fv_person *person)
+                    const struct fv_person *person,
+                    enum fv_person_state state)
 {
         struct fv_logic_npc *npc;
         struct fv_logic_position *pos;
@@ -426,17 +427,23 @@ fv_logic_update_npc(struct fv_logic *logic,
         npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
         pos = &npc->position;
 
-        pos->x = person->pos.x / (float) UINT32_MAX * FV_MAP_WIDTH;
-        pos->y = person->pos.y / (float) UINT32_MAX * FV_MAP_HEIGHT;
-        pos->current_direction = (person->pos.direction / (float) UINT16_MAX *
-                                  2 * M_PI);
-        if (pos->current_direction > M_PI)
-                pos->current_direction -= 2 * M_PI;
-        pos->target_direction = pos->current_direction;
-        pos->target_speed = 0.0f;
-        pos->current_speed = 0.0f;
+        if ((state & FV_PERSON_STATE_POSITION)) {
+                pos->x = person->pos.x / (float) UINT32_MAX * FV_MAP_WIDTH;
+                pos->y = person->pos.y / (float) UINT32_MAX * FV_MAP_HEIGHT;
+                pos->current_direction = (person->pos.direction /
+                                          (float) UINT16_MAX *
+                                          2 * M_PI);
+                if (pos->current_direction > M_PI)
+                        pos->current_direction -= 2 * M_PI;
+                pos->target_direction = pos->current_direction;
+                pos->target_speed = 0.0f;
+                pos->current_speed = 0.0f;
+        }
 
-        npc->type = MIN(person->appearance.image, FV_PERSON_N_TYPES - 1);
+        if ((state & FV_PERSON_STATE_APPEARANCE)) {
+                npc->type = MIN(person->appearance.image,
+                                FV_PERSON_N_TYPES - 1);
+        }
 }
 
 void
