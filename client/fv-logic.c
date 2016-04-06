@@ -29,6 +29,7 @@
 #include "fv-map.h"
 #include "fv-buffer.h"
 #include "fv-random.h"
+#include "fv-ray.h"
 
 /* Turn speed of a person in radians per second */
 #define FV_LOGIC_TURN_SPEED (2.5f * M_PI)
@@ -42,6 +43,16 @@
  * checked against for person-person collisions it is a circle with
  * this diameter */
 #define FV_LOGIC_PERSON_SIZE 0.8f
+
+/* Length of the square of where the bounding box of a person touches
+ * the floor. Used for ray intersection detection.
+ */
+#define FV_LOGIC_PERSON_OBB_SIZE 0.8f
+
+/* Height of the the bounding box of a person. Used for ray
+ * intersection detection.
+ */
+#define FV_LOGIC_PERSON_OBB_HEIGHT 1.85f
 
 /* Acceleration in blocks per second² at which the player changes its
  * speed to match the target speed specified by the controls. If the
@@ -529,4 +540,90 @@ enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic)
 {
         return logic->state;
+}
+
+struct find_person_closure {
+        float ray_points[6];
+        float best_person_frac;
+        float ray_floor_x, ray_floor_y;
+};
+
+static bool
+person_intersects_ray(struct find_person_closure *closure,
+                      const struct fv_logic_person *person)
+{
+        float dx = person->x - closure->ray_floor_x;
+        float dy = person->y - closure->ray_floor_y;
+        static const float person_aabb_size[] = {
+                FV_LOGIC_PERSON_OBB_SIZE,
+                FV_LOGIC_PERSON_OBB_SIZE,
+                FV_LOGIC_PERSON_OBB_HEIGHT
+        };
+        const float person_aabb_center[] = {
+                person->x,
+                person->y,
+                FV_LOGIC_PERSON_OBB_HEIGHT / 2.0f
+        };
+        float intersection;
+
+        /* Quick check if the floor position of the person is far from
+         * where the ray touches the floor.
+         */
+        if (dx * dx + dy * dy > (FV_LOGIC_PERSON_SIZE / 2.0f *
+                                 (FV_LOGIC_PERSON_SIZE / 2.0f) *
+                                 4.0f * 4.0f))
+                return false;
+
+        if (fv_ray_intersect_aabb(closure->ray_points,
+                                  person_aabb_center,
+                                  person_aabb_size,
+                                  &intersection) &&
+            intersection > closure->best_person_frac) {
+                closure->best_person_frac = intersection;
+                return true;
+        }
+
+        return false;
+}
+
+int
+fv_logic_find_person_intersecting_ray(struct fv_logic *logic,
+                                      const float *ray_points)
+{
+        struct find_person_closure closure;
+        int best_person = FV_LOGIC_FIND_PERSON_RESULT_NONE;
+        struct fv_logic_npc *npc;
+        int i;
+
+        for (i = 0; i < 2; i++) {
+                closure.ray_points[i * 3 + 0] =
+                        ray_points[i * 3 + 0] + logic->player.center_x;
+                closure.ray_points[i * 3 + 1] =
+                        ray_points[i * 3 + 1] + logic->player.center_y;
+                closure.ray_points[i * 3 + 2] = ray_points[i * 3 + 2];
+        }
+        closure.best_person_frac = -FLT_MAX;
+
+        /* Calculate where the ray touches the floor so that we can
+         * quickly quickly rule out people that are too far away to
+         * touch the ray.
+         */
+        fv_ray_intersect_z_plane(closure.ray_points,
+                                 0.0f, /* z_plane */
+                                 &closure.ray_floor_x,
+                                 &closure.ray_floor_y);
+
+        if (person_intersects_ray(&closure, &logic->player.person))
+                best_person = FV_LOGIC_FIND_PERSON_RESULT_PLAYER;
+
+        for (i = 0;
+             i < logic->npcs.length / sizeof (struct fv_logic_npc);
+             i++) {
+                npc = (struct fv_logic_npc *) logic->npcs.data + i;
+
+                if (person_intersects_ray(&closure, &npc->person))
+                        best_person = i;
+        }
+
+        return best_person;
 }
