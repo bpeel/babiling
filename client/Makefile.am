@@ -64,6 +64,8 @@ sources = \
 	fv-person-painter.c \
 	fv-person-painter.h \
 	fv-random.h \
+	fv-ray.c \
+	fv-ray.h \
 	fv-recorder.c \
 	fv-recorder.h \
 	fv-shader-data.c \
