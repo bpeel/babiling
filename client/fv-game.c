@@ -35,6 +35,7 @@
 #include "fv-map.h"
 #include "fv-gl.h"
 #include "fv-paint-state.h"
+#include "fv-ray.h"
 
 #define FV_GAME_FRUSTUM_TOP 1.428f
 /* 40° vertical FOV angle when the height of the display is
@@ -113,25 +114,19 @@ update_base_inverse(struct fv_game *game)
 }
 
 static void
-update_visible_area(struct fv_game *game)
+screen_to_world_ray_internal(struct fv_game *game,
+                             float x, float y,
+                             float *ray_points)
 {
-        float min_x = FLT_MAX, max_x = -FLT_MAX;
-        float min_y = FLT_MAX, max_y = -FLT_MAX;
-        float points_in[4 * 2 * 3], points_out[4 * 2 * 4];
-        float *p = points_in;
-        int x, y, z, i;
-        float px, py, frac;
+        float points_in[2 * 3], points_out[2 * 4];
+        int i, j;
 
-        for (y = -1; y <= 1; y += 2) {
-                for (x = -1; x <= 1; x += 2) {
-                        *(p++) = x;
-                        *(p++) = y;
-                        *(p++) = -1.0f;
-                        *(p++) = x;
-                        *(p++) = y;
-                        *(p++) = 1.0f;
-                }
-        }
+        points_in[0] = x;
+        points_in[1] = y;
+        points_in[2] = -1.0f;
+        points_in[3] = x;
+        points_in[4] = y;
+        points_in[5] = 1.0f;
 
         fv_matrix_project_points(&game->base_inverse,
                                  3, /* n_components */
@@ -139,13 +134,37 @@ update_visible_area(struct fv_game *game)
                                  points_in,
                                  sizeof (float) * 4,
                                  points_out,
-                                 4 * 2 /* n_points */);
+                                 2 /* n_points */);
 
-        for (i = 0; i < 4 * 2; i++) {
-                points_out[i * 4 + 0] /= points_out[i * 4 + 3];
-                points_out[i * 4 + 1] /= points_out[i * 4 + 3];
-                points_out[i * 4 + 2] /= points_out[i * 4 + 3];
+        for (i = 0; i < 2; i++) {
+                for (j = 0; j < 3; j++) {
+                        ray_points[i * 3 + j] =
+                                points_out[i * 4 + j] /
+                                points_out[i * 4 + 3];
+                }
         }
+}
+
+static void
+update_visible_area(struct fv_game *game)
+{
+        float min_x = FLT_MAX, max_x = -FLT_MAX;
+        float min_y = FLT_MAX, max_y = -FLT_MAX;
+        float ray_points[3 * 2 * 4];
+        float *p;
+        int x, y, z, i;
+        float px, py;
+
+        p = ray_points;
+
+        for (y = -1; y <= 1; y += 2) {
+                for (x = -1; x <= 1; x += 2) {
+                        screen_to_world_ray_internal(game, x, y, p);
+                        p += 3 * 2;
+                }
+        }
+
+        p = ray_points;
 
         for (i = 0; i < 4; i++) {
                 /* The two unprojected points represent a line going
@@ -157,10 +176,7 @@ update_visible_area(struct fv_game *game)
                  * ceiling of the world and keep track of the furthest
                  * one. */
                 for (z = 0; z <= 2; z += 2) {
-                        p = points_out + i * 4 * 2;
-                        frac = (z - p[6]) / (p[2] - p[6]);
-                        px = frac * (p[0] - p[4]) + p[4];
-                        py = frac * (p[1] - p[5]) + p[5];
+                        fv_ray_intersect_z_plane(p, z, &px, &py);
 
                         if (px < min_x)
                                 min_x = px;
@@ -171,6 +187,8 @@ update_visible_area(struct fv_game *game)
                         if (py > max_y)
                                 max_y = py;
                 }
+
+                p += 3 * 2;
         }
 
         game->paint_state.visible_w =
@@ -233,42 +251,33 @@ update_modelview(struct fv_game *game,
 }
 
 void
+fv_game_screen_to_world_ray(struct fv_game *game,
+                            int width, int height,
+                            int screen_x, int screen_y,
+                            float *ray_points)
+{
+        update_projection(game, width, height);
+        screen_to_world_ray_internal(game,
+                                     (screen_x + 0.5f) / width * 2.0f - 1.0f,
+                                     (0.5f - screen_y) / height * 2.0f + 1.0f,
+                                     ray_points);
+}
+
+void
 fv_game_screen_to_world(struct fv_game *game,
                         int width, int height,
                         int screen_x, int screen_y,
                         float *world_x, float *world_y)
 {
-        float points_in[2 * 3], points_out[2 * 4];
-        int i;
-        float frac;
+        float ray_points[2 * 3];
 
-        update_projection(game, width, height);
-
-        points_in[0] = (screen_x + 0.5f) / width * 2.0f - 1.0f;
-        points_in[1] = (0.5f - screen_y) / height * 2.0f + 1.0f;
-        points_in[2] = -1.0f;
-        points_in[3] = points_in[0];
-        points_in[4] = points_in[1];
-        points_in[5] = 1.0f;
-
-        fv_matrix_project_points(&game->base_inverse,
-                                 3, /* n_components */
-                                 sizeof (float) * 3,
-                                 points_in,
-                                 sizeof (float) * 4,
-                                 points_out,
-                                 2 /* n_points */);
-
-        for (i = 0; i < 2; i++) {
-                points_out[i * 4 + 0] /= points_out[i * 4 + 3];
-                points_out[i * 4 + 1] /= points_out[i * 4 + 3];
-                points_out[i * 4 + 2] /= points_out[i * 4 + 3];
-        }
-
-        /* See comment above in update_visible_area */
-        frac = (0 - points_out[6]) / (points_out[2] - points_out[6]);
-        *world_x = frac * (points_out[0] - points_out[4]) + points_out[4];
-        *world_y = frac * (points_out[1] - points_out[5]) + points_out[5];
+        fv_game_screen_to_world_ray(game,
+                                    width, height,
+                                    screen_x, screen_y,
+                                    ray_points);
+        fv_ray_intersect_z_plane(ray_points,
+                                 0.0f, /* z_plane */
+                                 world_x, world_y);
 }
 
 bool
