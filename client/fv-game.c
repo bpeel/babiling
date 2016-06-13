@@ -31,6 +31,7 @@
 #include "fv-transform.h"
 #include "fv-map-painter.h"
 #include "fv-person-painter.h"
+#include "fv-flag-painter.h"
 #include "fv-map.h"
 #include "fv-gl.h"
 #include "fv-paint-state.h"
@@ -53,6 +54,7 @@ struct fv_game {
 
         struct fv_map_painter *map_painter;
         struct fv_person_painter *person_painter;
+        struct fv_flag_painter *flag_painter;
 
         struct fv_matrix base_transform;
         struct fv_matrix base_inverse;
@@ -83,8 +85,13 @@ fv_game_new(struct fv_image_data *image_data,
         if (game->person_painter == NULL)
                 goto error_map;
 
+        game->flag_painter = fv_flag_painter_new(image_data, shader_data);
+        if (game->flag_painter == NULL)
+                goto error_person;
+
         return game;
 
+error_person:
         fv_person_painter_free(game->person_painter);
 error_map:
         fv_map_painter_free(game->map_painter);
@@ -303,11 +310,16 @@ fv_game_paint(struct fv_game *game,
 
         fv_map_painter_paint(game->map_painter,
                              &game->paint_state);
+
+        fv_flag_painter_paint(game->flag_painter,
+                              width, height,
+                              logic);
 }
 
 void
 fv_game_free(struct fv_game *game)
 {
+        fv_flag_painter_free(game->flag_painter);
         fv_person_painter_free(game->person_painter);
         fv_map_painter_free(game->map_painter);
         fv_free(game);
