@@ -91,6 +91,14 @@ changes. The image field specifies which image to display for this
 player. The actual images used are up to the client, the server just
 passes the number across.
 
+UPDATE_FLAGS (0x86)
+-----------------------
+• The payload is a list of uint32_ts each one representing a flag.
+  For the list of flags see common/fv-flag.h
+
+Sent when the player first connects or whenever their list of
+flags changes. It is invalid to send more than 16 flags.
+
 Messages to the client
 ======================
 
@@ -150,3 +158,13 @@ PLAYER_APPEARANCE (0x05)
 • uint8_t image
 
 Sent whenever a player's appearance changes.
+
+PLAYER_FLAGS (0x06)
+-----------------------
+
+• uint16_t player_num
+• The remainder of the payload is a list of uint32_ts each one
+  representing a flag. For the list of flags see
+  common/fv-flag.h
+
+Sent whenever a player's list of flags changes.
