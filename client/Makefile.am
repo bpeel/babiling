@@ -31,6 +31,8 @@ sources = \
 	fv-data.c \
 	fv-data.h \
 	fv-error-message.h \
+	fv-flag-painter.c \
+	fv-flag-painter.h \
 	fv-game.c \
 	fv-game.h \
 	fv-gl.c \
