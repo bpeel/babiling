@@ -403,6 +403,8 @@ set_flag_texture_coordinates(struct fv_flag_painter_vertex *vertices,
 static int
 get_vertices_for_flags(struct fv_flag_painter *painter,
                        const struct fv_paint_state *paint_state,
+                       float person_x,
+                       float person_y,
                        const uint32_t *flags,
                        int n_flags,
                        struct fv_flag_painter_vertex *vertices)
@@ -415,6 +417,7 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
         int i, column, row;
         int flag_index;
         int remainder;
+        float x_extent, y_extent;
         float border_x1, border_y1;
         float flag_x1, flag_y1;
 
@@ -459,20 +462,33 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
                 n_columns--;
         }
 
-        border_x1 = -(n_columns * (FV_FLAG_TEXTURE_FLAG_RATIO_X +
-                                   FV_FLAG_PAINTER_GAP_RATIO) -
-                      FV_FLAG_PAINTER_GAP_RATIO +
-                      FV_FLAG_TEXTURE_BORDER_RATIO * 2) / 2.0f * unit_size_x;
-        border_y1 = -(n_rows * (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
-                                FV_FLAG_PAINTER_GAP_RATIO) -
-                      FV_FLAG_PAINTER_GAP_RATIO +
-                      FV_FLAG_TEXTURE_BORDER_RATIO * 2) / 2.0f * unit_size_y;
+        x_extent = (n_columns * (FV_FLAG_TEXTURE_FLAG_RATIO_X +
+                                 FV_FLAG_PAINTER_GAP_RATIO) -
+                    FV_FLAG_PAINTER_GAP_RATIO +
+                    FV_FLAG_TEXTURE_BORDER_RATIO * 2) / 2.0f * unit_size_x;
+        y_extent = (n_rows * (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
+                              FV_FLAG_PAINTER_GAP_RATIO) -
+                    FV_FLAG_PAINTER_GAP_RATIO +
+                    FV_FLAG_TEXTURE_BORDER_RATIO * 2) / 2.0f * unit_size_y;
+        border_x1 = person_x - x_extent;
+        border_y1 = person_y - y_extent;
+
+        if (border_x1 < -1.0f)
+                border_x1 = -1.0f;
+        else if (border_x1 + x_extent * 2.0f > 1.0f)
+                border_x1 = 1.0f - x_extent * 2.0f;
+
+        if (border_y1 < -1.0f)
+                border_y1 = -1.0f;
+        else if (border_y1 + y_extent * 2.0f > 1.0f)
+                border_y1 = 1.0f - y_extent * 2.0f;
 
         add_background(vertices,
                        unit_size_x,
                        unit_size_y,
                        border_x1, border_y1,
-                       -border_x1, -border_y1);
+                       border_x1 + x_extent * 2.0f,
+                       border_y1 + y_extent * 2.0f);
         n_quads += FV_FLAG_PAINTER_N_BACKGROUND_QUADS;
 
         for (i = 0; i < n_flags; i++) {
@@ -513,13 +529,50 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
         return n_quads;
 }
 
+static void
+get_person_position(struct fv_paint_state *paint_state,
+                    const struct fv_person *person,
+                    float *person_x,
+                    float *person_y)
+{
+        float point_in[3];
+        float point_out[4];
+
+        fv_transform_ensure_mvp(&paint_state->transform);
+
+        point_in[0] = person->pos.x;
+        point_in[1] = person->pos.y;
+        point_in[2] = 1.0f;
+
+        fv_matrix_project_points(&paint_state->transform.mvp,
+                                 3, /* n_components */
+                                 sizeof point_in,
+                                 point_in,
+                                 sizeof point_out,
+                                 point_out,
+                                 1 /* n_points */);
+
+        *person_x = point_out[0] / point_out[3];
+        *person_y = point_out[1] / point_out[3];
+}
+
 void
 fv_flag_painter_paint(struct fv_flag_painter *painter,
                       struct fv_logic *logic,
                       struct fv_paint_state *paint_state)
 {
         struct fv_flag_painter_vertex *vertex;
+        struct fv_person person;
+        float person_x, person_y;
         int n_quads;
+
+        if (!fv_logic_get_flag_person(logic,
+                                      &person,
+                                      FV_PERSON_STATE_FLAGS |
+                                      FV_PERSON_STATE_POSITION))
+                return;
+
+        get_person_position(paint_state, &person, &person_x, &person_y);
 
         fv_gl.glUseProgram(painter->program);
         fv_array_object_bind(painter->array);
@@ -536,8 +589,11 @@ fv_flag_painter_paint(struct fv_flag_painter *painter,
 
         n_quads = get_vertices_for_flags(painter,
                                          paint_state,
-                                         fv_flag_texture_flags,
-                                         8,
+                                         person_x,
+                                         person_y,
+                                         person.flags.flags,
+                                         MIN(person.flags.n_flags,
+                                             FV_FLAG_PAINTER_MAX_FLAGS),
                                          vertex);
 
         fv_map_buffer_flush(0, /* offset */
