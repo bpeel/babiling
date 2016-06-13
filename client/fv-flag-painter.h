@@ -31,9 +31,8 @@ fv_flag_painter_new(struct fv_image_data *image_data,
 
 void
 fv_flag_painter_paint(struct fv_flag_painter *painter,
-                      int screen_width,
-                      int screen_height,
-                      struct fv_logic *logic);
+                      struct fv_logic *logic,
+                      struct fv_paint_state *paint_state);
 
 void
 fv_flag_painter_free(struct fv_flag_painter *painter);

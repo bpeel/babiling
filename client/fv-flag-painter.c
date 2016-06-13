@@ -402,8 +402,7 @@ set_flag_texture_coordinates(struct fv_flag_painter_vertex *vertices,
 
 static int
 get_vertices_for_flags(struct fv_flag_painter *painter,
-                       int screen_width,
-                       int screen_height,
+                       const struct fv_paint_state *paint_state,
                        const uint32_t *flags,
                        int n_flags,
                        struct fv_flag_painter_vertex *vertices)
@@ -419,19 +418,19 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
         float border_x1, border_y1;
         float flag_x1, flag_y1;
 
-        unit_pixels = MIN(screen_width, screen_height) / 128;
+        unit_pixels = MIN(paint_state->width, paint_state->height) / 128;
         if (unit_pixels < 1)
                 unit_pixels = 1;
 
-        unit_size_x = unit_pixels * 2.0f / screen_width;
-        unit_size_y = unit_pixels * 2.0f / screen_height;
+        unit_size_x = unit_pixels * 2.0f / paint_state->width;
+        unit_size_y = unit_pixels * 2.0f / paint_state->height;
 
-        max_columns = ((screen_width / unit_pixels -
+        max_columns = ((paint_state->width / unit_pixels -
                         FV_FLAG_TEXTURE_BORDER_RATIO +
                         FV_FLAG_PAINTER_GAP_RATIO) /
                        (FV_FLAG_TEXTURE_FLAG_RATIO_X +
                         FV_FLAG_PAINTER_GAP_RATIO));
-        max_rows = ((screen_height / unit_pixels -
+        max_rows = ((paint_state->height / unit_pixels -
                      FV_FLAG_TEXTURE_BORDER_RATIO +
                      FV_FLAG_PAINTER_GAP_RATIO) /
                     (FV_FLAG_TEXTURE_FLAG_RATIO_Y +
@@ -516,9 +515,8 @@ get_vertices_for_flags(struct fv_flag_painter *painter,
 
 void
 fv_flag_painter_paint(struct fv_flag_painter *painter,
-                      int screen_width,
-                      int screen_height,
-                      struct fv_logic *logic)
+                      struct fv_logic *logic,
+                      struct fv_paint_state *paint_state)
 {
         struct fv_flag_painter_vertex *vertex;
         int n_quads;
@@ -537,8 +535,7 @@ fv_flag_painter_paint(struct fv_flag_painter *painter,
                                    GL_DYNAMIC_DRAW);
 
         n_quads = get_vertices_for_flags(painter,
-                                         screen_width,
-                                         screen_height,
+                                         paint_state,
                                          fv_flag_texture_flags,
                                          8,
                                          vertex);

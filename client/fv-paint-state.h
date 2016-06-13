@@ -24,6 +24,7 @@
 
 struct fv_paint_state {
         struct fv_transform transform;
+        int width, height;
         float center_x, center_y;
         float visible_w, visible_h;
 };

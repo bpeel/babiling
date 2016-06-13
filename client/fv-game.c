@@ -306,6 +306,8 @@ fv_game_paint(struct fv_game *game,
               int width, int height,
               struct fv_logic *logic)
 {
+        game->paint_state.width = width;
+        game->paint_state.height = height;
         game->paint_state.center_x = center_x;
         game->paint_state.center_y = center_y;
 
@@ -321,8 +323,8 @@ fv_game_paint(struct fv_game *game,
                              &game->paint_state);
 
         fv_flag_painter_paint(game->flag_painter,
-                              width, height,
-                              logic);
+                              logic,
+                              &game->paint_state);
 }
 
 void
