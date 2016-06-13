@@ -407,6 +407,8 @@ update_direction(struct data *data)
 
         fv_logic_set_direction(data->logic, speed, direction);
 
+        fv_logic_set_flag_person(data->logic, FV_LOGIC_PERSON_NONE);
+
         queue_redraw(data);
 }
 
@@ -626,6 +628,30 @@ release_cursor(struct data *data)
         update_direction(data);
 }
 
+static bool
+check_click_person(struct data *data,
+                   int x, int y)
+{
+        float ray_points[6];
+        int person;
+
+        fv_game_screen_to_world_ray(data->graphics.game,
+                                    data->last_fb_width,
+                                    data->last_fb_height,
+                                    x, y,
+                                    ray_points);
+        person = fv_logic_find_person_intersecting_ray(data->logic,
+                                                       ray_points);
+
+        if (person != FV_LOGIC_PERSON_NONE) {
+                fv_logic_set_flag_person(data->logic, person);
+                queue_redraw(data);
+                return true;
+        }
+
+        return false;
+}
+
 static void
 handle_mouse_button(struct data *data,
                     const SDL_MouseButtonEvent *event)
@@ -636,6 +662,9 @@ handle_mouse_button(struct data *data,
         if (event->state == SDL_PRESSED) {
                 if (data->cursor_state != CURSOR_STATE_NONE ||
                     event->which == SDL_TOUCH_MOUSEID)
+                        return;
+
+                if (check_click_person(data, event->x, event->y))
                         return;
 
                 data->cursor_state = CURSOR_STATE_MOUSE;
@@ -667,6 +696,9 @@ handle_finger_down(struct data *data,
 {
         if (data->cursor_state != CURSOR_STATE_NONE ||
             event->fingerId != 0)
+                return;
+
+        if (check_click_person(data, event->x, event->y))
                 return;
 
         data->cursor_state = CURSOR_STATE_TOUCH;
