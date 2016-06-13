@@ -218,6 +218,33 @@ handle_update_appearance(struct fv_network *nw,
         return true;
 }
 
+static bool
+handle_update_flags(struct fv_network *nw,
+                    struct fv_network_client *client,
+                    struct fv_connection_update_flags_event *event)
+{
+        const char *remote_address_string =
+                fv_connection_get_remote_address_string(client->connection);
+        struct fv_player *player = fv_connection_get_player(client->connection);
+
+        if (player == NULL) {
+                fv_log("Client %s sent a flags update before a hello "
+                       "message",
+                       remote_address_string);
+                remove_client(nw, client);
+                return false;
+        }
+
+        player->n_flags = event->n_flags;
+        memcpy(player->flags,
+               event->flags,
+               sizeof (uint32_t) * event->n_flags);
+
+        dirty_player(nw, player, FV_PLAYER_STATE_FLAGS);
+
+        return true;
+}
+
 static void
 xor_bytes(uint64_t *id,
           const uint8_t *data,
@@ -394,6 +421,12 @@ connection_event_cb(struct fv_listener *listener,
                 struct fv_connection_update_appearance_event *de =
                         (void *) event;
                 return handle_update_appearance(nw, client, de);
+        }
+
+        case FV_CONNECTION_EVENT_UPDATE_FLAGS: {
+                struct fv_connection_update_flags_event *de =
+                        (void *) event;
+                return handle_update_flags(nw, client, de);
         }
 
         case FV_CONNECTION_EVENT_RECONNECT: {

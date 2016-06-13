@@ -43,6 +43,7 @@ enum fv_connection_event_type {
         FV_CONNECTION_EVENT_RECONNECT,
         FV_CONNECTION_EVENT_UPDATE_POSITION,
         FV_CONNECTION_EVENT_UPDATE_APPEARANCE,
+        FV_CONNECTION_EVENT_UPDATE_FLAGS,
         FV_CONNECTION_EVENT_SPEECH,
 };
 
@@ -69,6 +70,13 @@ struct fv_connection_update_appearance_event {
         struct fv_connection_event base;
 
         uint8_t image;
+};
+
+struct fv_connection_update_flags_event {
+        struct fv_connection_event base;
+
+        uint16_t n_flags;
+        const uint32_t *flags;
 };
 
 struct fv_connection_speech_event {

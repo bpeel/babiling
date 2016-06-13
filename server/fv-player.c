@@ -35,6 +35,7 @@ fv_player_new(uint64_t id)
         player->ref_count = 0;
         player->last_update_time = fv_main_context_get_monotonic_clock(NULL);
         player->next_speech = 0;
+        player->n_flags = 0;
 
         return player;
 }

@@ -61,6 +61,10 @@ struct fv_player {
         /* FV_PLAYER_STATE_APPEARANCE */
         uint8_t image;
 
+        /* FV_PLAYER_STATE_LANGUAGES */
+        uint16_t n_flags;
+        uint32_t flags[FV_PROTO_MAX_FLAGS];
+
         /* The last time a connection that is using this player sent
          * some data. If this gets too old it will be a candidate for
          * garbage collection.
@@ -75,7 +79,8 @@ struct fv_player {
 
 #define FV_PLAYER_STATE_POSITION (1 << 0)
 #define FV_PLAYER_STATE_APPEARANCE (1 << 1)
-#define FV_PLAYER_STATE_ALL ((1 << 2) - 1)
+#define FV_PLAYER_STATE_FLAGS (1 << 2)
+#define FV_PLAYER_STATE_ALL ((1 << 3) - 1)
 
 struct fv_player *
 fv_player_new(uint64_t id);

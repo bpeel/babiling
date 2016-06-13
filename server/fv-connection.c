@@ -283,6 +283,28 @@ write_player_state(struct fv_connection *conn,
                 state->flags &= ~FV_PLAYER_STATE_APPEARANCE;
         }
 
+        if (state->flags & FV_PLAYER_STATE_FLAGS) {
+                wrote = write_command(conn,
+
+                                      FV_PROTO_PLAYER_FLAGS,
+
+                                      FV_PROTO_TYPE_UINT16,
+                                      (uint16_t) player_num,
+
+                                      FV_PROTO_TYPE_BLOB,
+                                      (size_t) (player->n_flags *
+                                                sizeof (uint32_t)),
+                                      &player->flags,
+
+                                      FV_PROTO_TYPE_NONE);
+
+                if (wrote == -1)
+                        return false;
+
+                conn->write_buf_pos += wrote;
+                state->flags &= ~FV_PLAYER_STATE_FLAGS;
+        }
+
         if (state->flags & FV_PLAYER_STATE_POSITION) {
                 wrote = write_command(conn,
 
@@ -612,6 +634,36 @@ handle_update_appearance(struct fv_connection *conn)
 }
 
 static bool
+handle_update_flags(struct fv_connection *conn)
+{
+        struct fv_connection_update_flags_event event;
+        size_t blob_size;
+        const uint8_t *blob;
+
+        if (!fv_proto_read_payload(conn->message_data + 1,
+                                   conn->message_data_length - 1,
+
+                                   FV_PROTO_TYPE_BLOB,
+                                   &blob_size,
+                                   &blob,
+
+                                   FV_PROTO_TYPE_NONE) ||
+            blob_size / sizeof (uint32_t) > FV_PROTO_MAX_FLAGS) {
+                fv_log("Invalid update flags command received from %s",
+                       conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        event.n_flags = blob_size / sizeof (uint32_t);
+        event.flags = (const uint32_t *) blob;
+
+        return emit_event(conn,
+                          FV_CONNECTION_EVENT_UPDATE_FLAGS,
+                          &event.base);
+}
+
+static bool
 handle_keep_alive(struct fv_connection *conn)
 {
         if (!fv_proto_read_payload(conn->message_data + 1,
@@ -701,6 +753,8 @@ process_message(struct fv_connection *conn)
                 return handle_update_position(conn);
         case FV_PROTO_UPDATE_APPEARANCE:
                 return handle_update_appearance(conn);
+        case FV_PROTO_UPDATE_FLAGS:
+                return handle_update_flags(conn);
         case FV_PROTO_KEEP_ALIVE:
                 return handle_keep_alive(conn);
         case FV_PROTO_SPEECH:
