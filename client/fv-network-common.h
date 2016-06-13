@@ -265,6 +265,9 @@ fill_write_buf(struct fv_network *nw)
                         return;
         }
 
+        assert(base->dirty_player_state == 0);
+        base->dirty_player_state = 0;
+
         while (fv_recorder_has_packet(base->recorder)) {
                 if (!write_speech(nw))
                         return;
