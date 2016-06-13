@@ -86,15 +86,15 @@ fv_logic_for_each_person(struct fv_logic *logic,
                          fv_logic_person_cb person_cb,
                          void *user_data);
 
-#define FV_LOGIC_FIND_PERSON_RESULT_NONE -1
-#define FV_LOGIC_FIND_PERSON_RESULT_PLAYER -2
+#define FV_LOGIC_PERSON_NONE -1
+#define FV_LOGIC_PERSON_PLAYER -2
 
 /* Finds a person which intersects the given infinetely long ray. The
  * ray is given as 6 points representing two pairs of x,y,z
  * coordinates. The origin of the coordinate system is the bottom-left
- * floor of the map. Returns either FV_LOGIC_FIND_PERSON_RESULT_NONE,
- * FV_LOGIC_FIND_PERSON_RESULT_PLAYER or a non-negative value
- * representing the number of an npc.
+ * floor of the map. Returns either FV_LOGIC_PERSON_NONE,
+ * FV_LOGIC_PERSON_PLAYER or a non-negative value representing the
+ * number of an npc.
  */
 int
 fv_logic_find_person_intersecting_ray(struct fv_logic *logic,

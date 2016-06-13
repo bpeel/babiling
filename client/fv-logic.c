@@ -591,7 +591,7 @@ fv_logic_find_person_intersecting_ray(struct fv_logic *logic,
                                       const float *ray_points)
 {
         struct find_person_closure closure;
-        int best_person = FV_LOGIC_FIND_PERSON_RESULT_NONE;
+        int best_person = FV_LOGIC_PERSON_NONE;
         struct fv_logic_npc *npc;
         int i;
 
@@ -614,7 +614,7 @@ fv_logic_find_person_intersecting_ray(struct fv_logic *logic,
                                  &closure.ray_floor_y);
 
         if (person_intersects_ray(&closure, &logic->player.person))
-                best_person = FV_LOGIC_FIND_PERSON_RESULT_PLAYER;
+                best_person = FV_LOGIC_PERSON_PLAYER;
 
         for (i = 0;
              i < logic->npcs.length / sizeof (struct fv_logic_npc);
