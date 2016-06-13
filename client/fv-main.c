@@ -642,7 +642,8 @@ handle_mouse_button(struct data *data,
                 data->mouse_device = event->which;
                 set_cursor_screen_pos(data, event->x, event->y);
         } else {
-                if (data->mouse_device != event->which)
+                if (data->cursor_state != CURSOR_STATE_MOUSE ||
+                    data->mouse_device != event->which)
                         return;
 
                 release_cursor(data);
