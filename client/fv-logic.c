@@ -436,21 +436,13 @@ fv_logic_update_npc(struct fv_logic *logic,
         npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
 
         if ((state & FV_PERSON_STATE_POSITION)) {
-                npc->person.x = (person->pos.x /
-                                 (float) UINT32_MAX *
-                                 FV_MAP_WIDTH);
-                npc->person.y = (person->pos.y /
-                                 (float) UINT32_MAX *
-                                 FV_MAP_HEIGHT);
-                npc->person.direction = (person->pos.direction /
-                                         (float) UINT16_MAX *
-                                         2 * M_PI);
-                if (npc->person.direction > M_PI)
-                        npc->person.direction -= 2 * M_PI;
+                npc->person.x = person->pos.x;
+                npc->person.y = person->pos.y;
+                npc->person.direction = person->pos.direction;
         }
 
         if ((state & FV_PERSON_STATE_APPEARANCE)) {
-                npc->person.type = MIN(person->appearance.image,
+                npc->person.type = MIN(person->appearance.type,
                                        FV_PERSON_N_TYPES - 1);
         }
 
@@ -475,23 +467,15 @@ fv_logic_get_player(struct fv_logic *logic,
                     enum fv_person_state state)
 {
         const struct fv_logic_player *player = &logic->player;
-        float direction;
 
         if ((state & FV_PERSON_STATE_POSITION)) {
-                person->pos.x = (player->person.x /
-                                 (float) FV_MAP_WIDTH *
-                                 UINT32_MAX);
-                person->pos.y = (player->person.y /
-                                 (float) FV_MAP_HEIGHT *
-                                 UINT32_MAX);
-                direction = player->person.direction;
-                if (direction < 0)
-                        direction += 2 * M_PI;
-                person->pos.direction = direction / (2 * M_PI) * UINT16_MAX;
+                person->pos.x = player->person.x;
+                person->pos.y = player->person.y;
+                person->pos.direction = player->person.direction;
         }
 
         if ((state & FV_PERSON_STATE_APPEARANCE))
-                person->appearance.image = player->person.type;
+                person->appearance.type = player->person.type;
 
         if ((state & FV_PERSON_STATE_FLAGS)) {
                 person->flags.n_flags = player->person.n_flags;

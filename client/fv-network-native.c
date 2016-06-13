@@ -43,6 +43,7 @@
 #include "fv-recorder.h"
 #include "fv-error-message.h"
 #include "fv-mutex.h"
+#include "fv-map.h"
 
 #include "fv-network-common.h"
 

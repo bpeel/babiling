@@ -37,12 +37,12 @@ enum fv_person_type {
 #define FV_PERSON_N_TYPES 6
 
 struct fv_person_position {
-        uint32_t x, y;
-        uint16_t direction;
+        float x, y;
+        float direction;
 };
 
 struct fv_person_appearance {
-        uint8_t image;
+        enum fv_person_type type;
 };
 
 struct fv_person_flags {

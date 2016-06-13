@@ -139,19 +139,30 @@ static bool
 write_position(struct fv_network *nw)
 {
         struct fv_network_base *base = fv_network_get_base(nw);
+        uint32_t x, y;
+        uint16_t direction;
+        float direction_float;
         int res;
+
+        x = base->player.pos.x / (float) FV_MAP_WIDTH * UINT32_MAX;
+        y = base->player.pos.y / (float) FV_MAP_HEIGHT * UINT32_MAX;
+
+        direction_float = base->player.pos.direction;
+        if (direction_float < 0)
+                direction_float += 2 * M_PI;
+        direction = direction_float / (2 * M_PI) * UINT16_MAX;
 
         res = write_command(nw,
                             FV_PROTO_UPDATE_POSITION,
 
                             FV_PROTO_TYPE_UINT32,
-                            base->player.pos.x,
+                            x,
 
                             FV_PROTO_TYPE_UINT32,
-                            base->player.pos.y,
+                            y,
 
                             FV_PROTO_TYPE_UINT16,
-                            base->player.pos.direction,
+                            direction,
 
                             FV_PROTO_TYPE_NONE);
 
@@ -173,7 +184,7 @@ write_appearance(struct fv_network *nw)
                             FV_PROTO_UPDATE_APPEARANCE,
 
                             FV_PROTO_TYPE_UINT8,
-                            base->player.appearance.image,
+                            (uint8_t) base->player.appearance.type,
 
                             FV_PROTO_TYPE_NONE);
 
@@ -368,15 +379,16 @@ handle_player_position(struct fv_network *nw,
 {
         struct fv_network_base *base = fv_network_get_base(nw);
         struct fv_person *person;
-        struct fv_person_position position;
+        uint32_t x, y;
+        uint16_t direction;
         uint16_t player_num;
 
         if (!fv_proto_read_payload(payload,
                                    payload_length,
                                    FV_PROTO_TYPE_UINT16, &player_num,
-                                   FV_PROTO_TYPE_UINT32, &position.x,
-                                   FV_PROTO_TYPE_UINT32, &position.y,
-                                   FV_PROTO_TYPE_UINT16, &position.direction,
+                                   FV_PROTO_TYPE_UINT32, &x,
+                                   FV_PROTO_TYPE_UINT32, &y,
+                                   FV_PROTO_TYPE_UINT16, &direction,
                                    FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
@@ -384,7 +396,16 @@ handle_player_position(struct fv_network *nw,
 
         if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
                 person = (struct fv_person *) base->players.data + player_num;
-                person->pos = position;
+                person->pos.x = x / (float) UINT32_MAX * FV_MAP_WIDTH;
+                person->pos.y = y / (float) UINT32_MAX * FV_MAP_HEIGHT;
+
+                person->pos.direction = (direction /
+                                         (float) UINT16_MAX *
+                                         2 * M_PI);
+
+                if (person->pos.direction > M_PI)
+                        person->pos.direction -= 2 * M_PI;
+
                 dirty_player_state(base, player_num, FV_PERSON_STATE_POSITION);
         }
 
@@ -398,13 +419,13 @@ handle_player_appearance(struct fv_network *nw,
 {
         struct fv_network_base *base = fv_network_get_base(nw);
         struct fv_person *person;
-        struct fv_person_appearance appearance;
+        uint8_t type;
         uint16_t player_num;
 
         if (!fv_proto_read_payload(payload,
                                    payload_length,
                                    FV_PROTO_TYPE_UINT16, &player_num,
-                                   FV_PROTO_TYPE_UINT8, &appearance.image,
+                                   FV_PROTO_TYPE_UINT8, &type,
                                    FV_PROTO_TYPE_NONE)) {
                 set_socket_error(nw);
                 return false;
@@ -412,7 +433,7 @@ handle_player_appearance(struct fv_network *nw,
 
         if (player_num < FV_NETWORK_N_PLAYERS(nw)) {
                 person = (struct fv_person *) base->players.data + player_num;
-                person->appearance = appearance;
+                person->appearance.type = type;
                 dirty_player_state(base,
                                    player_num,
                                    FV_PERSON_STATE_APPEARANCE);
