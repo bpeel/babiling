@@ -113,6 +113,22 @@ fv_logic_update_npc(struct fv_logic *logic,
 enum fv_logic_state
 fv_logic_get_state(struct fv_logic *logic);
 
+/* Gets the state for the flag person, or returns flase if there is no
+ * flag person.
+ */
+bool
+fv_logic_get_flag_person(struct fv_logic *logic,
+                         struct fv_person *person,
+                         enum fv_person_state state);
+
+/* Sets the number of the person to show the flags for. This will be
+ * either FV_LOGIC_PERSON_NONE, FV_LOGIC_PERSON_PLAYER or a
+ * non-negative value representing the number of an npc.
+ */
+void
+fv_logic_set_flag_person(struct fv_logic *logic,
+                         int person_num);
+
 void
 fv_logic_free(struct fv_logic *logic);
 

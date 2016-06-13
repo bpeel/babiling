@@ -79,6 +79,9 @@ struct fv_logic {
 
         /* NPC player state. This state is not reset. Array of fv_logic_npc */
         struct fv_buffer npcs;
+
+        bool have_flag_person;
+        struct fv_person flag_person;
 };
 
 struct fv_logic *
@@ -104,6 +107,7 @@ fv_logic_new(void)
         player->center_y = player->person.pos.y;
 
         logic->state = FV_LOGIC_STATE_RUNNING;
+        logic->have_flag_person = false;
 
         return logic;
 }
@@ -588,4 +592,60 @@ fv_logic_find_person_intersecting_ray(struct fv_logic *logic,
         }
 
         return best_person;
+}
+
+bool
+fv_logic_get_flag_person(struct fv_logic *logic,
+                         struct fv_person *person,
+                         enum fv_person_state state)
+{
+        if (logic->have_flag_person) {
+                fv_person_copy_state(person, &logic->flag_person, state);
+                return true;
+        } else {
+                return false;
+        }
+}
+
+static void
+get_person(struct fv_logic *logic,
+           int person_num,
+           struct fv_person *person,
+           enum fv_person_state state)
+{
+        const struct fv_person *src_person;
+        const struct fv_logic_npc *npc;
+
+        if (person_num == FV_LOGIC_PERSON_PLAYER) {
+                src_person = &logic->player.person;
+        } else {
+                assert(person_num < logic->npcs.length /
+                       sizeof (struct fv_logic_npc));
+
+                npc = (struct fv_logic_npc *) logic->npcs.data + person_num;
+                src_person = &npc->person;
+        }
+
+        fv_person_copy_state(person, src_person, state);
+}
+
+void
+fv_logic_set_flag_person(struct fv_logic *logic,
+                         int person_num)
+{
+        assert(person_num == FV_LOGIC_PERSON_NONE ||
+               person_num == FV_LOGIC_PERSON_PLAYER ||
+               (person_num >= 0 &&
+                person_num <
+                logic->npcs.length / sizeof (struct fv_logic_npc)));
+
+        if (person_num == FV_LOGIC_PERSON_NONE) {
+                logic->have_flag_person = false;
+        } else {
+                logic->have_flag_person = true;
+                get_person(logic,
+                           person_num,
+                           &logic->flag_person,
+                           FV_PERSON_STATE_ALL);
+        }
 }
