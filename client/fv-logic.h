@@ -43,16 +43,8 @@ enum fv_logic_state_change {
         FV_LOGIC_STATE_CHANGE_ALIVE = 1 << 2
 };
 
-struct fv_logic_person {
-        float direction;
-        float x, y;
-        enum fv_person_type type;
-        int n_flags;
-        enum fv_flag flags[FV_PROTO_MAX_FLAGS];
-};
-
 typedef void
-(* fv_logic_person_cb)(const struct fv_logic_person *person,
+(* fv_logic_person_cb)(const struct fv_person *person,
                        void *user_data);
 
 /* Player movement speed measured in blocks per second */

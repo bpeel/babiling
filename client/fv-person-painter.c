@@ -316,7 +316,7 @@ flush_people(struct paint_closure *data)
 }
 
 static void
-paint_person_cb(const struct fv_logic_person *person,
+paint_person_cb(const struct fv_person *person,
                 void *user_data)
 {
         const size_t instance_size = sizeof (struct fv_person_painter_instance);
@@ -324,11 +324,12 @@ paint_person_cb(const struct fv_logic_person *person,
         struct paint_closure *data = user_data;
         GLsizei buffer_size;
         GLuint uniform;
+        enum fv_person_type type = person->appearance.type;
 
         /* Don't paint people that are out of the visible range */
-        if (fabsf(person->x - data->paint_state->center_x) - 0.5f >=
+        if (fabsf(person->pos.x - data->paint_state->center_x) - 0.5f >=
             data->paint_state->visible_w / 2.0f ||
-            fabsf(person->y - data->paint_state->center_y) - 0.5f >=
+            fabsf(person->pos.y - data->paint_state->center_y) - 0.5f >=
             data->paint_state->visible_h / 2.0f)
                 return;
 
@@ -337,9 +338,9 @@ paint_person_cb(const struct fv_logic_person *person,
 
         data->transform.modelview = data->paint_state->transform.modelview;
         fv_matrix_translate(&data->transform.modelview,
-                            person->x, person->y, 0.0f);
+                            person->pos.x, person->pos.y, 0.0f);
         fv_matrix_rotate(&data->transform.modelview,
-                         person->direction * 180.f / M_PI,
+                         person->pos.direction * 180.f / M_PI,
                          0.0f, 0.0f, 1.0f);
         fv_transform_dirty(&data->transform);
         fv_transform_ensure_mvp(&data->transform);
@@ -363,12 +364,12 @@ paint_person_cb(const struct fv_logic_person *person,
                 memcpy(instance->normal_transform,
                        data->transform.normal_transform,
                        sizeof instance->normal_transform);
-                instance->tex_layer = person->type;
+                instance->tex_layer = type;
 
                 data->n_instances++;
         } else {
                 fv_gl.glBindTexture(GL_TEXTURE_2D,
-                                    data->painter->textures[person->type]);
+                                    data->painter->textures[type]);
                 uniform = data->painter->transform_uniform;
                 fv_gl.glUniformMatrix4fv(uniform,
                                          1, /* count */

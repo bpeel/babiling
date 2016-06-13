@@ -61,7 +61,7 @@
 #define FV_LOGIC_ACCELERATION 20.0f
 
 struct fv_logic_player {
-        struct fv_logic_person person;
+        struct fv_person person;
         float target_direction;
         float current_speed;
         float target_speed;
@@ -69,7 +69,7 @@ struct fv_logic_player {
 };
 
 struct fv_logic_npc {
-        struct fv_logic_person person;
+        struct fv_person person;
 };
 
 struct fv_logic {
@@ -90,18 +90,18 @@ fv_logic_new(void)
         fv_buffer_init(&logic->npcs);
 
         player = &logic->player;
-        player->person.x = FV_MAP_START_X;
-        player->person.y = FV_MAP_START_Y;
-        player->person.direction = -M_PI / 2.0f;
-        player->person.type = fv_random_range(0, FV_PERSON_N_TYPES);
-        player->person.n_flags = 0;
+        player->person.pos.x = FV_MAP_START_X;
+        player->person.pos.y = FV_MAP_START_Y;
+        player->person.pos.direction = -M_PI / 2.0f;
+        player->person.appearance.type = fv_random_range(0, FV_PERSON_N_TYPES);
+        player->person.flags.n_flags = 0;
 
         player->target_direction = 0.0f;
         player->current_speed = 0.0f;
         player->target_speed = 0.0f;
 
-        player->center_x = player->person.x;
-        player->center_y = player->person.y;
+        player->center_x = player->person.pos.x;
+        player->center_y = player->person.pos.y;
 
         logic->state = FV_LOGIC_STATE_RUNNING;
 
@@ -119,19 +119,19 @@ is_wall(int x, int y)
 }
 
 static bool
-person_in_range(const struct fv_logic_person *person,
+person_in_range(const struct fv_person *person,
                 float x, float y,
                 float distance)
 {
-        float dx = x - person->x;
-        float dy = y - person->y;
+        float dx = x - person->pos.x;
+        float dy = y - person->pos.y;
 
         return dx * dx + dy * dy < distance * distance;
 }
 
 static bool
 person_blocking(const struct fv_logic *logic,
-                const struct fv_logic_person *this_person,
+                const struct fv_person *this_person,
                 float x, float y)
 {
         const struct fv_logic_npc *npc;
@@ -167,10 +167,10 @@ update_player_direction(struct fv_logic *logic,
 {
         float diff, turned;
 
-        if (player->target_direction == player->person.direction)
+        if (player->target_direction == player->person.pos.direction)
                 return false;
 
-        diff = player->target_direction - player->person.direction;
+        diff = player->target_direction - player->person.pos.direction;
 
         if (diff > M_PI)
                 diff = diff - 2.0f * M_PI;
@@ -180,11 +180,11 @@ update_player_direction(struct fv_logic *logic,
         turned = progress_secs * FV_LOGIC_TURN_SPEED;
 
         if (turned >= fabsf(diff))
-                player->person.direction = player->target_direction;
+                player->person.pos.direction = player->target_direction;
         else if (diff < 0.0f)
-                player->person.direction -= turned;
+                player->person.pos.direction -= turned;
         else
-                player->person.direction += turned;
+                player->person.pos.direction += turned;
 
         return true;
 }
@@ -210,14 +210,19 @@ update_player_xy(struct fv_logic *logic,
         if (fabsf(diff) > 1.0f)
                 diff = copysign(1.0f, diff);
 
-        pos = (player->person.x + diff +
+        pos = (player->person.pos.x + diff +
                copysignf(FV_LOGIC_PERSON_SIZE / 2.0f, diff));
         if (!is_wall(floorf(pos),
-                     floorf(player->person.y + FV_LOGIC_PERSON_SIZE / 2.0f)) &&
+                     floorf(player->person.pos.y +
+                            FV_LOGIC_PERSON_SIZE / 2.0f)) &&
             !is_wall(floorf(pos),
-                     floorf(player->person.y - FV_LOGIC_PERSON_SIZE / 2.0f)) &&
-            !person_blocking(logic, &player->person, pos, player->person.y)) {
-                player->person.x += diff;
+                     floorf(player->person.pos.
+                            y - FV_LOGIC_PERSON_SIZE / 2.0f)) &&
+            !person_blocking(logic,
+                             &player->person,
+                             pos,
+                             player->person.pos.y)) {
+                player->person.pos.x += diff;
                 ret = true;
         }
 
@@ -226,14 +231,19 @@ update_player_xy(struct fv_logic *logic,
         if (fabsf(diff) > 1.0f)
                 diff = copysign(1.0f, diff);
 
-        pos = (player->person.y + diff +
+        pos = (player->person.pos.y + diff +
                copysignf(FV_LOGIC_PERSON_SIZE / 2.0f, diff));
-        if (!is_wall(floorf(player->person.x + FV_LOGIC_PERSON_SIZE / 2.0f),
+        if (!is_wall(floorf(player->person.pos.x +
+                            FV_LOGIC_PERSON_SIZE / 2.0f),
                      floorf(pos)) &&
-            !is_wall(floorf(player->person.x - FV_LOGIC_PERSON_SIZE / 2.0f),
+            !is_wall(floorf(player->person.pos.x -
+                            FV_LOGIC_PERSON_SIZE / 2.0f),
                      floorf(pos)) &&
-            !person_blocking(logic, &player->person, player->person.x, pos)) {
-                player->person.y += diff;
+            !person_blocking(logic,
+                             &player->person,
+                             player->person.pos.x,
+                             pos)) {
+                player->person.pos.y += diff;
                 ret = true;
         }
 
@@ -266,7 +276,7 @@ update_player_speed(struct fv_logic_player *player,
          * finish turning.
          */
         direction_difference = fabsf(player->target_direction -
-                                     player->person.direction);
+                                     player->person.pos.direction);
         if (direction_difference > M_PI)
                 direction_difference = 2.0f * M_PI - direction_difference;
         if (direction_difference > 90.5f * M_PI / 180.0f)
@@ -335,8 +345,8 @@ update_player_position(struct fv_logic *logic,
 static enum fv_logic_state_change
 update_center(struct fv_logic_player *player)
 {
-        float dx = player->person.x - player->center_x;
-        float dy = player->person.y - player->center_y;
+        float dx = player->person.pos.x - player->center_x;
+        float dy = player->person.pos.y - player->center_y;
         float d2, d;
 
         d2 = dx * dx + dy * dy;
@@ -435,23 +445,7 @@ fv_logic_update_npc(struct fv_logic *logic,
 
         npc = (struct fv_logic_npc *) logic->npcs.data + npc_num;
 
-        if ((state & FV_PERSON_STATE_POSITION)) {
-                npc->person.x = person->pos.x;
-                npc->person.y = person->pos.y;
-                npc->person.direction = person->pos.direction;
-        }
-
-        if ((state & FV_PERSON_STATE_APPEARANCE)) {
-                npc->person.type = MIN(person->appearance.type,
-                                       FV_PERSON_N_TYPES - 1);
-        }
-
-        if ((state & FV_PERSON_STATE_FLAGS)) {
-                npc->person.n_flags = person->flags.n_flags;
-                memcpy(npc->person.flags,
-                       person->flags.flags,
-                       sizeof npc->person.flags[0] * person->flags.n_flags);
-        }
+        fv_person_copy_state(&npc->person, person, state);
 }
 
 void
@@ -466,31 +460,15 @@ fv_logic_get_player(struct fv_logic *logic,
                     struct fv_person *person,
                     enum fv_person_state state)
 {
-        const struct fv_logic_player *player = &logic->player;
-
-        if ((state & FV_PERSON_STATE_POSITION)) {
-                person->pos.x = player->person.x;
-                person->pos.y = player->person.y;
-                person->pos.direction = player->person.direction;
-        }
-
-        if ((state & FV_PERSON_STATE_APPEARANCE))
-                person->appearance.type = player->person.type;
-
-        if ((state & FV_PERSON_STATE_FLAGS)) {
-                person->flags.n_flags = player->person.n_flags;
-                memcpy(person->flags.flags,
-                       player->person.flags,
-                       sizeof person->flags.flags[0] * person->flags.n_flags);
-        }
+        fv_person_copy_state(person, &logic->player.person, state);
 }
 
 void
 fv_logic_get_player_position(struct fv_logic *logic,
                              float *x, float *y)
 {
-        *x = logic->player.person.x;
-        *y = logic->player.person.y;
+        *x = logic->player.person.pos.x;
+        *y = logic->player.person.pos.y;
 }
 
 void
@@ -534,18 +512,18 @@ struct find_person_closure {
 
 static bool
 person_intersects_ray(struct find_person_closure *closure,
-                      const struct fv_logic_person *person)
+                      const struct fv_person *person)
 {
-        float dx = person->x - closure->ray_floor_x;
-        float dy = person->y - closure->ray_floor_y;
+        float dx = person->pos.x - closure->ray_floor_x;
+        float dy = person->pos.y - closure->ray_floor_y;
         static const float person_aabb_size[] = {
                 FV_LOGIC_PERSON_OBB_SIZE,
                 FV_LOGIC_PERSON_OBB_SIZE,
                 FV_LOGIC_PERSON_OBB_HEIGHT
         };
         const float person_aabb_center[] = {
-                person->x,
-                person->y,
+                person->pos.x,
+                person->pos.y,
                 FV_LOGIC_PERSON_OBB_HEIGHT / 2.0f
         };
         float intersection;
