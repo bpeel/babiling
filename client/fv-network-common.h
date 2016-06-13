@@ -564,6 +564,7 @@ static void
 init_base(struct fv_network_base *nw)
 {
         nw->has_player_id = false;
+        nw->dirty_player_state = 0;
 
         fv_buffer_init(&nw->players);
         fv_buffer_init(&nw->dirty_players);
