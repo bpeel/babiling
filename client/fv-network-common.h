@@ -555,8 +555,7 @@ init_new_connection(struct fv_network *nw)
         struct fv_network_base *base = fv_network_get_base(nw);
 
         base->sent_hello = false;
-        base->dirty_player_state = (FV_PERSON_STATE_POSITION |
-                                    FV_PERSON_STATE_APPEARANCE);
+        base->dirty_player_state = FV_PERSON_STATE_ALL;
         base->last_update_time = SDL_GetTicks();
 }
 
