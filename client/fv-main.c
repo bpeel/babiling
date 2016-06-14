@@ -694,17 +694,22 @@ static void
 handle_finger_down(struct data *data,
                    const SDL_TouchFingerEvent *event)
 {
+        int x_pos, y_pos;
+
         if (data->cursor_state != CURSOR_STATE_NONE ||
             event->fingerId != 0)
                 return;
 
-        if (check_click_person(data, event->x, event->y))
+        x_pos = event->x * data->last_fb_width;
+        y_pos = event->y * data->last_fb_height;
+
+        if (check_click_person(data, x_pos, y_pos))
                 return;
 
         data->cursor_state = CURSOR_STATE_TOUCH;
         data->touch_device = event->touchId;
 
-        set_cursor_screen_pos(data, event->x, event->y);
+        set_cursor_screen_pos(data, x_pos, y_pos);
 }
 
 static void
@@ -728,7 +733,9 @@ handle_finger_motion(struct data *data,
             event->fingerId != 0)
                 return;
 
-        set_cursor_screen_pos(data, event->x, event->y);
+        set_cursor_screen_pos(data,
+                              event->x * data->last_fb_width,
+                              event->y * data->last_fb_height);
 }
 
 static void
