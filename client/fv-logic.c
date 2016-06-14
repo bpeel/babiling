@@ -60,6 +60,41 @@
  */
 #define FV_LOGIC_ACCELERATION 20.0f
 
+static const enum fv_flag *
+flag_choices[] = {
+        (const enum fv_flag[]) {
+                FV_FLAG_FRANCE,
+                FV_FLAG_ESPERANTO,
+                FV_FLAG_UNITED_KINGDOM,
+                FV_FLAG_CATALONIA,
+                0
+        },
+        (const enum fv_flag[]) {
+                FV_FLAG_UNITED_STATES_OF_AMERICA,
+                FV_FLAG_MEXICO,
+                0
+        },
+        (const enum fv_flag[]) {
+                FV_FLAG_ARGENTINA,
+                FV_FLAG_BRAZIL,
+                FV_FLAG_UNITED_STATES_OF_AMERICA,
+                0
+        },
+        (const enum fv_flag[]) {
+                FV_FLAG_GERMANY,
+                FV_FLAG_FRANCE,
+                FV_FLAG_NETHERLANDS,
+                FV_FLAG_UNITED_KINGDOM,
+                0
+        },
+        (const enum fv_flag[]) {
+                FV_FLAG_NEPAL,
+                FV_FLAG_WALLONIA,
+                FV_FLAG_QUEBEC,
+                0
+        }
+};
+
 struct fv_logic_player {
         struct fv_person person;
         float target_direction;
@@ -84,6 +119,20 @@ struct fv_logic {
         struct fv_person flag_person;
 };
 
+static void
+init_flags(struct fv_person_flags *flag_state)
+{
+        int flag_choice = fv_random_range(0, FV_N_ELEMENTS(flag_choices));
+        int i;
+
+        for (i = 0; flag_choices[flag_choice][i]; i++);
+
+        flag_state->n_flags = i;
+        memcpy(flag_state->flags,
+               flag_choices[flag_choice],
+               i * sizeof (enum fv_flag));
+}
+
 struct fv_logic *
 fv_logic_new(void)
 {
@@ -97,7 +146,7 @@ fv_logic_new(void)
         player->person.pos.y = FV_MAP_START_Y;
         player->person.pos.direction = -M_PI / 2.0f;
         player->person.appearance.type = fv_random_range(0, FV_PERSON_N_TYPES);
-        player->person.flags.n_flags = 0;
+        init_flags(&player->person.flags);
 
         player->target_direction = 0.0f;
         player->current_speed = 0.0f;
